@@ -1,4 +1,4 @@
-# ICnana 🐱
+# ICnana 
 
 > 面向竞赛编程（OI / ACM）的一体化桌面刷题工具
 

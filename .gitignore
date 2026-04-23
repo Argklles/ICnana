@@ -1,0 +1,31 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 编译工作区（临时文件，不提交）
+workspace/
+
+# OJ 浏览器 Cookie 缓存（运行时生成，不提交）
+src-tauri/.oj_cookies/
+src-tauri/.oj_cookies_data/

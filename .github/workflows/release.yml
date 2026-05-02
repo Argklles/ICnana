@@ -24,7 +24,8 @@ jobs:
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            rpm                  # 【关键修复】打包 rpm 必须要有这个工具
 
       - name: 安装 Node.js 20
         uses: actions/setup-node@v4
@@ -100,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
-      contents: write
+      contents: write # 【点赞】这是非常正确的一步，允许 Action 往仓库写 Release
     steps:
       - name: 下载所有产物
         uses: actions/download-artifact@v4

@@ -16,6 +16,21 @@ interface Favorite {
   url: string;
 }
 
+interface HistoryEntry {
+  url: string;
+  timestamp: number;
+}
+
+const formatTimeAgo = (ts: number) => {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "刚刚";
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
+};
+
 type TabType = "code" | "browser";
 
 const DEFAULT_TEMPLATE = `// 开始编写你的代码喵！！
@@ -54,6 +69,30 @@ function App() {
   const [indentSize, setIndentSize] = useState<2 | 4>(2);
   const [editingTemplate, setEditingTemplate] = useState(DEFAULT_TEMPLATE);
   const [editingIndent, setEditingIndent] = useState<2 | 4>(2);
+
+  // ── 面板宽度（可拖动） ───────────────────────────────
+  const [fileSidebarWidth, setFileSidebarWidth] = useState(160);
+  const [testPanelWidth, setTestPanelWidth] = useState(380);
+  const draggingFiles = useRef(false);
+  const draggingTest  = useRef(false);
+  const dragStartX    = useRef(0);
+  const dragStartW    = useRef(0);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStartX.current;
+      if (draggingFiles.current) {
+        setFileSidebarWidth(Math.max(100, Math.min(320, dragStartW.current + dx)));
+      }
+      if (draggingTest.current) {
+        setTestPanelWidth(Math.max(200, Math.min(600, dragStartW.current - dx)));
+      }
+    };
+    const onUp = () => { draggingFiles.current = false; draggingTest.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
 
   // ref 用于在事件回调中读取最新 code，避免 stale closure
   const codeRef = useRef(code);
@@ -193,6 +232,10 @@ function App() {
     return () => clearTimeout(timer);
   }, [code, monaco, activeFile]);
 
+  // ── 浏览历史 ───────────────────────────────────────────────
+  const [browserHistory, setBrowserHistory] = useState<HistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   // ── 收藏夹 ─────────────────────────────────────────────────
   const [favorites, setFavorites] = useState<Favorite[]>(DEFAULT_FAVORITES);
   const [showFavForm, setShowFavForm] = useState(false);
@@ -202,6 +245,15 @@ function App() {
   useEffect(() => {
     const saved = localStorage.getItem("oj_favorites");
     if (saved) { try { setFavorites(JSON.parse(saved)); } catch (e) {} }
+    // 加载历史记录，过滤超过 30 天的条目
+    const savedHistory = localStorage.getItem("oj_history");
+    if (savedHistory) {
+      try {
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const parsed: HistoryEntry[] = JSON.parse(savedHistory);
+        setBrowserHistory(parsed.filter(h => h.timestamp > thirtyDaysAgo));
+      } catch (e) {}
+    }
   }, []);
 
   const addFavorite = () => {
@@ -226,7 +278,8 @@ function App() {
     const syncBrowser = async () => {
       if (activeTab === "browser" && browserContainerRef.current) {
         const rect = browserContainerRef.current.getBoundingClientRect();
-        await invoke("update_oj_bounds", { x: rect.x + window.scrollX, y: rect.y + window.scrollY, width: rect.width, height: rect.height });
+        // 用 screenX/screenY 获取屏幕绝对坐标，而非视口相对坐标
+        await invoke("update_oj_bounds", { x: rect.x + window.screenX, y: rect.y + window.screenY, width: rect.width, height: rect.height });
       } else {
         await invoke("update_oj_bounds", { x: -9999, y: -9999, width: 800, height: 600 });
       }
@@ -255,7 +308,18 @@ function App() {
         } catch (e) { console.error("解析包裹失败:", e); }
       });
       unlistenUrl = await listen("oj_url_changed", (event: any) => {
-        setOjUrl((event.payload as string).split("#")[0]);
+        const newUrl = (event.payload as string).split("#")[0];
+        // 过滤掉 about:blank 等内部页面，避免后退时污染 URL 栏和历史
+        if (!newUrl.startsWith("http")) return;
+        setOjUrl(newUrl);
+        // 写入历史记录，去重并保留最近 30 天
+        setBrowserHistory(prev => {
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const entry: HistoryEntry = { url: newUrl, timestamp: Date.now() };
+          const updated = [entry, ...prev.filter(h => h.url !== newUrl && h.timestamp > thirtyDaysAgo)].slice(0, 500);
+          localStorage.setItem("oj_history", JSON.stringify(updated));
+          return updated;
+        });
       });
     };
     setup();
@@ -266,7 +330,7 @@ function App() {
     if (!browserContainerRef.current) return;
     const rect = browserContainerRef.current.getBoundingClientRect();
     try {
-      await invoke("open_oj_browser", { url: targetUrl, x: rect.x + window.scrollX, y: rect.y + window.scrollY, width: rect.width, height: rect.height });
+      await invoke("open_oj_browser", { url: targetUrl, x: rect.x + window.screenX, y: rect.y + window.screenY, width: rect.width, height: rect.height });
     } catch (e) { console.error(e); }
   };
 
@@ -364,7 +428,7 @@ function App() {
         <div style={{ display: "flex", width: "100%", height: "100%", position: "absolute", visibility: activeTab === "code" ? "visible" : "hidden", zIndex: activeTab === "code" ? 10 : 0 }}>
 
           {/* 📁 文件侧边栏 */}
-          <div style={{ width: "160px", background: "#1e1e1e", borderRight: "1px solid #333", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+          <div style={{ width: `${fileSidebarWidth}px`, background: "#1e1e1e", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
             <div style={{ padding: "8px 10px", borderBottom: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "11px", color: "#888", fontWeight: "bold", letterSpacing: "0.5px" }}>📁 文件</span>
               <button
@@ -436,6 +500,13 @@ function App() {
             </div>
           </div>
 
+          {/* 分隔条 1：文件栏 ↔ 编辑器 */}
+          <div
+            onMouseDown={e => { draggingFiles.current = true; dragStartX.current = e.clientX; dragStartW.current = fileSidebarWidth; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }}
+            style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", flexShrink: 0, transition: "background 0.15s", zIndex: 5 }}
+            className="resize-divider"
+          />
+
           {/* 编辑器区域 */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px", minWidth: 0 }}>
             <div style={{ flex: 1, minHeight: 0, border: "1px solid #444", borderRadius: "8px", overflow: "hidden" }}>
@@ -460,17 +531,34 @@ function App() {
             >▶ 运行全部样例 {activeFile ? `(${activeFile})` : ""}</button>
           </div>
 
+          {/* 分隔条 2：编辑器 ↔ 测试面板 */}
+          <div
+            onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }}
+            style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", flexShrink: 0, transition: "background 0.15s", zIndex: 5 }}
+            className="resize-divider"
+          />
+
           {/* 测试用例面板 */}
-          <div style={{ width: "380px", background: "#252526", padding: "10px", overflowY: "auto", borderLeft: "1px solid #333", flexShrink: 0 }}>
+          <div style={{ width: `${testPanelWidth}px`, background: "#252526", padding: "10px", overflowY: "auto", flexShrink: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px", alignItems: "center" }}>
               <strong style={{ color: "#fff", fontSize: "16px" }}>测试用例</strong>
               <button onClick={() => setTestCases([...testCases, { input: "", output: "", actual: "", status: "pending" }])} style={{ padding: "4px 8px", background: "#444", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}>➕ 添加</button>
             </div>
             {testCases.map((tc, index) => (
               <div key={index} style={{ background: "#333", padding: "10px", marginBottom: "10px", borderRadius: "4px", borderLeft: tc.status === "ac" ? "4px solid #40b864" : tc.status === "wa" ? "4px solid #f44336" : "4px solid #888" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", alignItems: "center" }}>
                   <span style={{ fontSize: "12px", color: "#888" }}>Case #{index + 1}</span>
-                  <b style={{ fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#888" }}>{tc.status.toUpperCase()}</b>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <b style={{ fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#888" }}>{tc.status.toUpperCase()}</b>
+                    <button
+                      onClick={() => {
+                        if (testCases.length <= 1) return;
+                        setTestCases(testCases.filter((_, i) => i !== index));
+                      }}
+                      title={testCases.length <= 1 ? "至少保留一个用例" : "删除此用例"}
+                      style={{ background: "none", border: "none", color: testCases.length <= 1 ? "#555" : "#f44336", cursor: testCases.length <= 1 ? "not-allowed" : "pointer", fontSize: "15px", lineHeight: 1, padding: "0 2px" }}
+                    >×</button>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
                   <textarea value={tc.input} onChange={e => { const n = [...testCases]; n[index].input = e.target.value; setTestCases(n); }} style={inputStyle} placeholder="输入" />
@@ -486,7 +574,47 @@ function App() {
 
         {/* ── OJ 浏览器 ── */}
         <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", position: "absolute", visibility: activeTab === "browser" ? "visible" : "hidden", zIndex: activeTab === "browser" ? 10 : 0 }}>
-          <div style={{ display: "flex", padding: "8px 12px", background: "#2d2d2d", gap: "8px", borderBottom: "1px solid #444" }}>
+          <div style={{ display: "flex", padding: "8px 12px", background: "#2d2d2d", gap: "8px", borderBottom: "1px solid #444", alignItems: "center" }}>
+
+            {/* ≡ 历史记录 */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                title="浏览历史"
+                style={{ background: showHistory ? "#444" : "#333", color: "#ccc", border: "1px solid #555", padding: "5px 10px", borderRadius: "4px", cursor: "pointer", fontSize: "16px", lineHeight: 1 }}
+              >≡</button>
+              {showHistory && (
+                <div style={{ position: "absolute", top: "36px", left: "0", width: "360px", maxHeight: "420px", background: "#2d2d2d", border: "1px solid #444", borderRadius: "6px", boxShadow: "0 8px 24px rgba(0,0,0,0.7)", zIndex: 300, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: "1px solid #444" }}>
+                    <span style={{ fontSize: "12px", color: "#aaa", fontWeight: "bold" }}>📋 浏览历史（30 天内）</span>
+                    <button onClick={() => { setBrowserHistory([]); localStorage.removeItem("oj_history"); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: "11px" }}>清空</button>
+                  </div>
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    {browserHistory.length === 0 ? (
+                      <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "12px" }}>暂无历史记录</div>
+                    ) : browserHistory.map((h, i) => (
+                      <div
+                        key={i}
+                        onClick={() => { setOjUrl(h.url); openBrowser(h.url); setShowHistory(false); }}
+                        style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #333", display: "flex", flexDirection: "column", gap: "2px" }}
+                        className="history-item"
+                      >
+                        <span style={{ fontSize: "12px", color: "#d4d4d4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.url}</span>
+                        <span style={{ fontSize: "10px", color: "#666" }}>{formatTimeAgo(h.timestamp)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ← 后退按钮 */}
+            <button
+              onClick={() => invoke("oj_browser_back")}
+              title="返回上一页"
+              style={{ background: "#333", color: "#ccc", border: "1px solid #555", padding: "5px 10px", borderRadius: "4px", cursor: "pointer", fontSize: "14px", flexShrink: 0 }}
+            >←</button>
+
             <input
               style={{ flex: 1, padding: "6px 12px", background: "#1a1a1a", border: "1px solid #444", borderRadius: "4px", color: "#fff", outline: "none", fontSize: "13px" }}
               value={ojUrl}
@@ -496,6 +624,11 @@ function App() {
             />
             <button style={{ background: "#007acc", color: "white", border: "none", padding: "0 15px", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }} onClick={() => openBrowser()}>前往</button>
             <button style={{ background: "#ff9800", color: "white", border: "none", padding: "0 15px", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }} onClick={() => invoke("extract_builtin")}>⚡ 提取题目</button>
+            <button
+              title="在系统默认浏览器中打开（可用于通过人机验证）"
+              style={{ background: "#555", color: "#ccc", border: "none", padding: "0 12px", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}
+              onClick={() => invoke("open_in_system_browser", { url: ojUrl })}
+            >🔗 外部打开</button>
           </div>
           <div ref={browserContainerRef} style={{ flex: 1, width: "100%", background: "#000", pointerEvents: activeTab === "browser" ? "auto" : "none" }}>
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#444" }}>正在召唤浏览器...喵...</div>

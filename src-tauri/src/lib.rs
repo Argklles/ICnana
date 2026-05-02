@@ -308,8 +308,10 @@ async fn open_oj_browser(
     };
 
     if let Some(window) = app.get_webview_window("oj_browser") {
-        let js = format!("window.location.href = '{}';", safe_url);
-        let _ = window.eval(&js);
+        // 使用 navigate() 而不是 eval，避免被站点 CSP 拦截
+        if let Ok(parsed) = safe_url.parse::<url::Url>() {
+            let _ = window.navigate(parsed);
+        }
         let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         let _ = window.set_size(tauri::LogicalSize::new(width, height));
         let _ = window.set_focus();
@@ -317,7 +319,7 @@ async fn open_oj_browser(
     }
 
     let app_clone = app.clone();
-    let fake_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    let fake_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
     let window = WebviewWindowBuilder::new(
         &app,
@@ -330,6 +332,18 @@ async fn open_oj_browser(
     .always_on_top(true)
     .user_agent(fake_user_agent)
     .data_directory(std::path::PathBuf::from(".oj_cookies"))
+    .initialization_script(r#"
+        // 将所有 target="_blank" 链接改为在当前窗口内跳转，避免新窗口无法打开
+        window.addEventListener('click', function(e) {
+            var el = e.target;
+            while (el && el.tagName !== 'A') el = el.parentElement;
+            if (el && el.href && (el.target === '_blank' || el.target === '_new' || el.target === '_top')) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.location.href = el.href;
+            }
+        }, true);
+    "#)
     .on_navigation(move |url| {
         let _ = app_clone.emit("oj_url_changed", url.as_str());
         if let Some(hash) = url.fragment() {
@@ -360,6 +374,23 @@ async fn update_oj_bounds(app: tauri::AppHandle, x: f64, y: f64, width: f64, hei
     if let Some(window) = app.get_webview_window("oj_browser") {
         let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    }
+}
+
+#[tauri::command]
+fn open_in_system_browser(url: String) {
+    #[cfg(target_os = "linux")]
+    let _ = Command::new("xdg-open").arg(&url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("cmd").args(["/c", "start", "", &url]).spawn();
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(&url).spawn();
+}
+
+#[tauri::command]
+fn oj_browser_back(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("oj_browser") {
+        let _ = window.eval("history.back()");
     }
 }
 
@@ -508,7 +539,9 @@ pub fn run() {
             save_workspace_file,
             new_workspace_file,
             delete_workspace_file,
-            rename_workspace_file
+            rename_workspace_file,
+            open_in_system_browser,
+            oj_browser_back
         ])
         .run(tauri::generate_context!())
         .expect("运行失败喵");

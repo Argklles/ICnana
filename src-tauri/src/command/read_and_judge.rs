@@ -5,6 +5,11 @@ use std::fs;
 use crate::oj::TestCase;
 use crate::utils::fs as ic_fs;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+use crate::compiler::cpp_gcc::{compile_code, run_binary};
+
 /*
 该命名空间与cpp文件的读取与样例的judge相关
 */
@@ -31,54 +36,30 @@ pub async fn judge_all(filename: String, code: String, mut cases: Vec<TestCase>)
     let bin_name = filename.trim_end_matches(".cpp").to_string() + ".bin";
     let bin = ic_fs::workspace_dir().join(&bin_name);
     fs::write(&src, &code).unwrap();
-    let compile = Command::new("g++")
-        .arg(&src)
-        .arg("-o")
-        .arg(&bin)
-        .output()
-        .unwrap();
-
-    if !compile.status.success() {
-        let err = String::from_utf8_lossy(&compile.stderr).to_string();
+    if let Err(compile_err) = compile_code(&src, &bin) {
         for case in &mut cases {
             case.status = "error".to_string();
-            case.actual = err.clone();
+            case.actual = compile_err.clone();
         }
         return cases;
     }
 
     for case in &mut cases {
-        let child_process = Command::new(&bin)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn();
-
-        let mut child = match child_process {
-            Ok(c) => c,
-            Err(_) => {
+        match run_binary(&bin, &case.input) {
+            Ok(actual_out) => {
+                case.actual = actual_out.clone();
+                // 验证实际输出和期望输出是否一致
+                if actual_out == case.output.trim() {
+                    case.status = "ac".to_string();
+                } else {
+                    case.status = "wa".to_string();
+                }
+            }
+            Err(run_err) => {
+                // 如果运行过程出错（如超时、无法启动等）
                 case.status = "error".to_string();
-                case.actual = "启动失败".to_string();
-                continue;
+                case.actual = run_err;
             }
-        };
-
-        if let Some(mut stdin) = child.stdin.take() {
-            let input_with_newline = format!("{}\n", case.input);
-            let _ = stdin.write_all(input_with_newline.as_bytes());
-        }
-
-        if let Ok(output) = child.wait_with_output() {
-            let actual_out = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            case.actual = actual_out.clone();
-
-            if actual_out == case.output.trim() {
-                case.status = "ac".to_string();
-            } else {
-                case.status = "wa".to_string();
-            }
-        } else {
-            case.status = "error".to_string();
-            case.actual = "读取超时".to_string();
         }
     }
     cases

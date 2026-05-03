@@ -20,13 +20,16 @@ pub struct CCTestCase {
     pub output: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+// CC 完整数据包结构
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")] // 关键！告诉 Serde 自动处理驼峰命名
 pub struct CCPayload {
-    pub name: String,
-    pub group: String,
-    pub url: String,
-    pub time_limit: u64,
-    pub memory_limit: u64,
-    pub tests: Vec<CCTestCase>,
+    pub name: String,           // 题目名称，例如 "A. Theatre Square"
+    pub group: String,          // 分组/来源，例如 "Codeforces - Codeforces Beta Round 1"
+    pub url: String,            // 题目原始链接
+    pub memory_limit: i32,      // 内存限制 (单位通常是 MB)
+    pub time_limit: i32,        // 时间限制 (单位是 ms)
+    pub interactive: bool,      // 是否是交互题
+    pub tests: Vec<CCTestCase>,     // 这就是你要落盘的物理样例！
+    pub test_type: String,      // 通常是 "single" 或 "multiNumber"
 }

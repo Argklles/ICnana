@@ -1,14 +1,11 @@
-use std::process::{Command, Stdio};
-use std::io::Write;
 use std::fs;
 
-use crate::oj::TestCase;
+use crate::{compiler::hidden_cmd::create_hidden_command, oj::TestCase};
 use crate::utils::fs as ic_fs;
+use crate::compiler::cpp_gcc::{compile_code, run_binary};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-
-use crate::compiler::cpp_gcc::{compile_code, run_binary};
 
 /*
 该命名空间与cpp文件的读取与样例的judge相关
@@ -73,7 +70,7 @@ pub async fn check_syntax(filename: String, code: String) -> String {
     }
     let src = ic_fs::workspace_dir().join(&filename);
     let _ = fs::write(&src, &code);
-    let output = Command::new("g++")
+    let output = create_hidden_command("g++")
         .arg("-fsyntax-only")
         .arg("-Wall")
         .arg(&src)

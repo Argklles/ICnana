@@ -22,7 +22,8 @@ pub async fn judge_all(filename: String, code: String, mut cases: Vec<TestCase>)
         }
         return cases;
     }
-    let src = ic_fs::workspace_dir().join(&filename);
+
+    let src = ic_fs::workspace_cpp(&filename);
     let bin_name = filename.trim_end_matches(".cpp").to_string();
     let bin = ic_fs::workspace_bin(&bin_name);
     fs::write(&src, &code).unwrap();
@@ -61,7 +62,8 @@ pub async fn check_syntax(filename: String, code: String) -> String {
     if ic_fs::ensure_workspace().is_err() {
         return String::new();
     }
-    let src = ic_fs::workspace_dir().join(&filename);
+
+    let src = ic_fs::workspace_cpp(&filename);
     let _ = fs::write(&src, &code);
     let output = create_hidden_command("g++")
         .arg("-fsyntax-only")

@@ -142,13 +142,37 @@ function App() {
   };
 
   // ── 切换文件：先保存当前，再加载新文件 ────────────────────
-  const switchFile = async (filename: string) => {
+const switchFile = async (filename: string) => {
     if (filename === activeFileRef.current) return;
+
+    // 1. 切换前：保存当前旧文件的代码和样例
     if (activeFileRef.current) {
-      await invoke("save_workspace_file", { filename: activeFileRef.current, code: codeRef.current }).catch(() => {});
+      try {
+        // 保存代码
+        await invoke("save_workspace_file", { filename: activeFileRef.current, code: codeRef.current });
+        // 保存样例 (确保运行后的最新结果被固化到硬盘)
+        await invoke("save_test_cases", { filename: activeFileRef.current, cases: testCases }); 
+      } catch (e) {
+        console.error("保存旧文件数据失败喵:", e);
+      }
     }
+
+    // 2. 切换后：加载新文件的代码
     const content = await invoke<string>("load_workspace_file", { filename });
     setCode(content);
+
+    // 3. 核心：加载新文件的样例数据
+    try {
+      // 只传 filename，后端会通过 stem 自动定位 .cases.json
+      const cases = await invoke<TestCase[]>("load_test_cases", { filename });
+      setTestCases(cases);
+    } catch (e) {
+      console.error("加载新样例失败喵:", e);
+      // 如果读取失败，给一个初始空样例防止界面留空
+      setTestCases([{ input: "", output: "", actual:"", status:"pending" }]);
+    }
+
+    // 4. 更新 UI 状态
     setActiveFile(filename);
     localStorage.setItem("icnana_active_file", filename);
   };
@@ -522,11 +546,32 @@ function App() {
             <button
               onClick={async () => {
                 if (!activeFile) return;
-                const loading = testCases.map(c => ({ ...c, actual: "正在运行喵...", status: "pending" as const }));
+                const loading = testCases.map(c => ({ 
+                  ...c,
+                  actual: "正在运行喵...",
+                  status: "pending" as const }));
+
                 setTestCases(loading);
-                const res = await invoke<TestCase[]>("judge_all", { filename: activeFile, code, cases: loading });
+                const res = await invoke<TestCase[]>("judge_all", { 
+                  filename: activeFile, 
+                  code,
+                  cases: loading });
+
                 setTestCases(res);
-              }}
+
+                try {
+                    // 这里的路径我们可以通过之前写好的 ic_fs 逻辑在后端自动对应
+                    // 假设你已经在后端处理了路径，这里直接传文件名或对应的路径即可
+                    await invoke("save_test_cases", { 
+                      filename: activeFile, 
+                      cases: loading 
+                    });
+                    console.log("样例已自动同步到本地文件喵！");
+                  } catch (e) {
+                    console.error("保存失败了喵:", e);
+                  }
+                }
+              }
               style={{ marginTop: "10px", padding: "12px", background: "#40b864", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold", flexShrink: 0 }}
             >▶ 运行全部样例 {activeFile ? `(${activeFile})` : ""}</button>
           </div>

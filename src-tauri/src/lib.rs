@@ -28,9 +28,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            compiler::cpp_gcc::g_cpp,
-
-            command::read_and_judge::read_code,
             command::read_and_judge::judge_all,
             command::read_and_judge::check_syntax,
 
@@ -45,7 +42,6 @@ pub fn run() {
 
             command::history_testcase::load_test_cases,
             command::history_testcase::save_test_cases,
-            command::history_testcase::clear_test_cases,
         ])
         .run(tauri::generate_context!())
         .expect("运行失败喵");

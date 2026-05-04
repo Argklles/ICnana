@@ -1,8 +1,8 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
-use crate::utils::fs as ic_fs;
-
+use crate::utils::fs::{self as ic_fs, workspace_bin, workspace_dir, workspace_test_cases};
+use crate::command::history_testcase as hiscase;
 /*
 该命名空间与工作区的文件管理相关
 */
@@ -12,6 +12,7 @@ pub fn list_workspace_files() -> Vec<String> {
     let _ = ic_fs::ensure_workspace();
     let dir = ic_fs::workspace_dir();
     let mut files: Vec<String> = vec![];
+
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -22,6 +23,7 @@ pub fn list_workspace_files() -> Vec<String> {
             }
         }
     }
+    
     files.sort();
     if files.is_empty() {
         let default = "solution.cpp";
@@ -66,65 +68,62 @@ pub fn new_workspace_file(filename: String, template: Option<String>) -> Result<
 //创建一个新的文件
 
 #[tauri::command]
-pub fn delete_workspace_file(file_path: String) -> Result<(), String> {
-    let p = PathBuf::from(&file_path);
+pub fn delete_workspace_file(filename: String) -> Result<(), String> {
+    let p = workspace_dir().join(&filename);
 
-    if p.exists() {
-        fs::remove_file(&p).map_err(|e| format!("无法删除源码文件: {e}"))?;
-    }
+    let stem = p.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&filename);
 
-    if let Some(ext) = p.extension() {
-        if ext == "cpp" || ext == "cc" {
-            let mut cases_path = p.clone();
-            cases_path.set_extension("cases.json");
+    let cpp_path = ic_fs::workspace_cpp(stem);
+    let bin_path = ic_fs::workspace_bin(stem);
+    let cases_path = ic_fs::workspace_test_cases(stem);
 
-            if cases_path.exists() {
-                let _ = fs::remove_file(cases_path); 
-                println!("已同步清理测试样例文件喵~");
-            }
+    let target = vec![cpp_path, bin_path, cases_path];
+    for path in target {
+        if path.exists(){
+            let _= fs::remove_file(&path);
         }
     }
 
+    println!("已经删除所有名为{stem}的文件喵！");
     Ok(())
 }
 //删除文件,会同时删除cpp文件和case.json（样例文件）文件
 
 #[tauri::command]
 pub fn rename_workspace_file(old_name: String, new_name: String) -> Result<String, String> {
-    let workspace = ic_fs::workspace_dir();
-    let old_path = workspace.join(&old_name);
+    let old_p = Path::new(&old_name);
+    let old_stem = old_p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&old_name);
+
+    let new_p = Path::new(&new_name);
+    let new_stem = new_p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&new_name);
     
-    // 1. 智能处理新名字后缀
-    // 使用 PathBuf 处理，无论用户输入 "abc" 还是 "abc.cpp"，结果都是 "abc.cpp"
-    let mut new_path = workspace.join(&new_name);
-    new_path.set_extension("cpp");
+    if old_stem == new_stem {return Ok(new_stem.to_string())};
 
-    let final_new_name = new_path.file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("文件名包含非法字符喵~")?
-        .to_string();
-
-    // 2. 检查目标是否冲突
-    if new_path.exists() {
-        return Err(format!("文件 {} 已存在喵~", final_new_name));
+    let new_cpp = ic_fs::workspace_cpp(new_stem);
+    if new_cpp.exists() {
+        return Err(format!("文件 {new_stem} 已存在喵~"));
     }
 
-    // 3. 执行源码重命名
-    fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    let rename_targets = vec![
+        (ic_fs::workspace_cpp(old_stem), ic_fs::workspace_cpp(new_stem)),
+        (ic_fs::workspace_bin(old_stem), ic_fs::workspace_bin(new_stem)),
+        (ic_fs::workspace_test_cases(old_stem), ic_fs::workspace_test_cases(new_stem)),
+    ];
 
-    // 4.联动重命名 JSON (只有旧文件是 .cpp 时才触发)
-    if old_name.ends_with(".cpp") || old_name.ends_with(".cc") {
-        let mut old_json = old_path.clone();
-        old_json.set_extension("cases.json");
-
-        if old_json.exists() {
-            let mut new_json = new_path.clone();
-            new_json.set_extension("cases.json");
-
-            let _ = fs::rename(old_json, new_json);
+    for (old_path, new_path) in rename_targets {
+        if old_path.exists() {
+            fs::rename(&old_path, &new_path)
+                .map_err(|e| format!("重命名失败: {}", e))?;
         }
     }
 
-    Ok(final_new_name)
+    println!("已将 {} 相关文件全部更名为 {} 喵！", old_stem, new_stem);
+    Ok(new_stem.to_string())
 }
 //重命名文件

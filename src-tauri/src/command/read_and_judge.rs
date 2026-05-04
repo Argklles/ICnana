@@ -11,13 +11,6 @@ use std::os::windows::process::CommandExt;
 该命名空间与cpp文件的读取与样例的judge相关
 */
 
-#[tauri::command]
-pub fn read_code() -> String {
-    match fs::read_to_string(ic_fs::workspace_cpp()) {
-        Ok(content) => content,
-        Err(_) => String::from("// 开始编写你的代码喵！！\n#include <iostream>\nusing namespace std;\n\nint main() {\n    return 0;\n}")
-    }
-}
 //读取已有的文件，有初始代码模板设定;
 
 #[tauri::command]
@@ -30,8 +23,8 @@ pub async fn judge_all(filename: String, code: String, mut cases: Vec<TestCase>)
         return cases;
     }
     let src = ic_fs::workspace_dir().join(&filename);
-    let bin_name = filename.trim_end_matches(".cpp").to_string() + ".bin";
-    let bin = ic_fs::workspace_dir().join(&bin_name);
+    let bin_name = filename.trim_end_matches(".cpp").to_string();
+    let bin = ic_fs::workspace_bin(&bin_name);
     fs::write(&src, &code).unwrap();
     if let Err(compile_err) = compile_code(&src, &bin) {
         for case in &mut cases {

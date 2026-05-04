@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /*
 该命名空间用于确定文件路径
@@ -10,12 +10,16 @@ pub fn workspace_dir() -> PathBuf {
     PathBuf::from("../workspace")
 }
 
-pub fn workspace_cpp() -> PathBuf {
-    workspace_dir().join("test.cpp")
+pub fn workspace_cpp(file_name: &str) -> PathBuf {
+    workspace_dir().join(file_name).with_extension("cpp")
 }
 
-pub fn workspace_bin() -> PathBuf {
-    workspace_dir().join("test.bin")
+pub fn workspace_bin(file_name: &str) -> PathBuf {
+    workspace_dir().join(file_name).with_extension("bin")
+}
+
+pub fn workspace_test_cases(file_name: &str) -> PathBuf {
+    workspace_dir().join(file_name).with_extension("cases.json")
 }
 
 /// 确保 workspace 目录存在

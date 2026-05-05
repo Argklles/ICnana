@@ -10,6 +10,19 @@ pub fn workspace_dir() -> PathBuf {
     PathBuf::from("../workspace")
 }
 
+#[tauri::command]
+pub fn get_workspace_question(stem: String) -> Result<serde_json::Value, String> {
+    let path = workspace_question(&stem);
+    if !path.exists() {
+        return Err("找不到该题目的元数据喵~".to_string());
+    }
+    
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    
+    Ok(json)
+}
+
 pub fn get_works_dir(strm: &str, filename: &str) -> PathBuf {
     workspace_dir().join(strm).join(filename)
 }

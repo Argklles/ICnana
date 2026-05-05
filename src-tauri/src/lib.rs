@@ -42,6 +42,8 @@ pub fn run() {
 
             command::history_testcase::load_test_cases,
             command::history_testcase::save_test_cases,
+
+            oj::get_cc::get_problem_meta,
         ])
         .run(tauri::generate_context!())
         .expect("运行失败喵");

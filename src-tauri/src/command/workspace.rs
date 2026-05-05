@@ -93,6 +93,25 @@ pub fn new_workspace_file(filename: String, template: Option<String>) -> Result<
     let content = template.unwrap_or_else(|| default_template.to_string());
 
     fs::write(&path, &content).map_err(|e| e.to_string())?;
+
+//--------------------------创建题目信息相关------------------------------
+    let question_path = ic_fs::workspace_question(&stem); // 对应 ../workspace/{stem}/question.json
+
+    // 如果是从 CC 插件来的，直接存 payload
+    // 如果是手动新建的，存一个基础模板
+    let meta = serde_json::json!({
+        "name": &stem,
+        "url": "",
+        "timeLimit": 1000,
+        "memoryLimit": 256
+    });
+
+    let meta_json = serde_json::to_string_pretty(&meta)
+        .map_err(|e| format!("序列化题目元数据失败喵: {}", e))?;
+
+    fs::write(&question_path, meta_json)
+        .map_err(|e| format!("写入题目元数据失败喵: {}", e))?;
+
     Ok(stem.to_string())
 }
 //创建一个新的文件

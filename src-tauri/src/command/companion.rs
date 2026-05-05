@@ -1,7 +1,8 @@
 use axum::{extract::State, Json};
 use tauri::{AppHandle, Manager, Emitter};
 
-use crate::oj::CCPayload;
+use crate::oj::models::CCPayload;
+use crate::oj::get_cc::*;
 
 /*
     Competitive Companion 数据打包传递
@@ -18,11 +19,26 @@ pub async fn handle_companion(
 ) -> axum::http::StatusCode {
     println!("🎉 收到新靶场情报: {} - {}", payload.group, payload.name);
 
-    if let Err(e) = state.app_handle.emit("oj_problem_received", payload) {
-        eprintln!("💥 转发给前端失败啦: {}", e);
-        return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+    // 1. 🌟 核心接入点：先在后端进行数据清洗和落盘生成文件夹！
+    match process_cc_payload(payload) {
+        Ok(stem) => {
+            println!("💾 题目档案已落盘，文件夹名: {}", stem);
+            
+            // 2. 落盘成功后，通知前端去加载这个新的题目文件夹
+            // 注意：这里我们发的是 stem (字符串)，而不是巨大的 payload
+            if let Err(e) = state.app_handle.emit("oj_problem_received", stem) {
+                eprintln!("💥 转发给前端失败啦: {}", e);
+                return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+            }
+        }
+        Err(e) => {
+            eprintln!("💥 处理并保存题目数据失败喵: {}", e);
+            // 这里可以考虑发个报错事件给前端，让前端弹个 Toast
+            return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
+        }
     }
 
+    // 3. 极其贴心的窗口唤醒逻辑
     if let Some(window) = state.app_handle.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();

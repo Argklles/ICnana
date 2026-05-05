@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::{compiler::hidden_cmd::create_hidden_command, oj::TestCase};
+use crate::{compiler::hidden_cmd::create_hidden_command, oj::models::TestCase};
 use crate::utils::fs as ic_fs;
 use crate::compiler::cpp_gcc::{compile_code, run_binary};
 

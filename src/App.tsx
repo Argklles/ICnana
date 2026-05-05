@@ -62,6 +62,19 @@ function App() {
   const [newFileName, setNewFileName] = useState("");
   const [renamingFile, setRenamingFile] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [incomingProblem, setIncomingProblem] = useState<string | null>(null);
+  //--题目渲染相关---------------------------------------------------------------------------------------------
+  // 定义和后端完全一致的接口
+  interface QuestionMeta {
+    name: string;
+    group: string;
+    url: string;
+    timeLimit: number;
+    memoryLimit: number;
+  }
+
+  // 存放当前题目的信息
+  const [problemMeta, setProblemMeta] = useState<QuestionMeta | null>(null);
 
   // ── 编辑器设置 ───────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
@@ -104,6 +117,8 @@ function App() {
 
   // ── 初始加载文件列表 + 设置 ────────────────────────────
   useEffect(() => {
+    
+
     const init = async () => {
       // 加载设置
       const savedTemplate = localStorage.getItem("icnana_code_template");
@@ -172,9 +187,118 @@ const switchFile = async (filename: string) => {
       setTestCases([{ input: "", output: "", actual:"", status:"pending" }]);
     }
 
+    // 🌟 核心：加载新题目的元数据 (question.json)
+    try {
+      // 注意：这里的参数名要和你后端 Rust 写的参数名对应（之前我们写的是 stem: String）
+      const meta = await invoke<QuestionMeta>("get_problem_meta", { stem: filename });
+      setProblemMeta(meta);
+    } catch (e) {
+      console.warn("这道题没有元数据喵，可能是纯手动创建的空文件:", e);
+      setProblemMeta(null); // 如果没有，就清空面板
+    }
+
     // 4. 更新 UI 状态
     setActiveFile(filename);
     localStorage.setItem("icnana_active_file", filename);
+  };
+
+  // 🌟 ── 监听 CC 插件发来的新题目 ───────────────────────────
+  useEffect(() => {
+    const unlistenPromise = listen<string>("oj_problem_received", (event) => {
+      const newStem = event.payload; 
+      console.log("🎉 插件发来新题目了喵！等待用户决定:", newStem);
+      
+      // 拦截它！弹窗让用户选择
+      setIncomingProblem(newStem);
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  // 选项 A：新开代码页（和以前的逻辑一样）
+  const handleOpenNewPage = async (stem: string) => {
+    setIncomingProblem(null); // 关闭弹窗
+    const updatedFiles = await invoke<string[]>("list_workspace_files");
+    setFiles(updatedFiles);
+    await switchFile(stem);
+  };
+
+  // 选项 B：导入当前页（提取样例，然后销毁新文件夹）
+  const handleMergeToCurrent = async (stem: string) => {
+    setIncomingProblem(null); // 关闭弹窗
+
+    // 🌟 1. 改用你的 activeFile 状态变量！并加一个警告防止它为空
+    const currentTarget = activeFile; 
+    if (!currentTarget) {
+      alert("当前没有选中的代码页，无法导入喵！");
+      return;
+    }
+
+    // 🛑 新增防御 1：防止“我杀我自己”
+    if (stem === currentTarget) {
+      alert("笨蛋，新发来的题目和当前题目是同一个啦，不需要导入喵！");
+      // 为了防止后端已经新建了同名文件夹导致覆盖，这里可以视情况刷新一下
+      return;
+    }
+
+    try {
+          // 🛑 新增防御 2：动手前先摸一下目标文件夹还在不在
+          // 我们可以尝试读取一下当前代码，如果抛错说明文件夹没了
+          await invoke("load_workspace_file", { filename: currentTarget });
+
+          console.log(`准备把 ${stem} 的样例偷进 ${currentTarget} 喵...`);
+
+          const newCases = await invoke<TestCase[]>("load_test_cases", { filename: stem });
+          setTestCases(newCases);
+          
+          await invoke("save_test_cases", { 
+            filename: currentTarget, 
+            cases: newCases 
+          });
+
+          await invoke("delete_workspace_file", { filename: stem });
+          
+          console.log("🎉 成功将样例偷入当前页面，现场已清理！");
+        } catch (e) {
+          console.error("合并样例失败了喵:", e);
+          // 报错后自动刷新一下左侧的文件列表，把那些“幽灵文件”刷掉
+          const updatedFiles = await invoke<string[]>("list_workspace_files");
+          setFiles(updatedFiles);
+          alert("目标文件可能已经被删除了喵，列表已为你刷新！报错：" + e); 
+        }
+
+    try {
+      console.log(`准备把 ${stem} 的样例偷进 ${currentTarget} 喵...`);
+
+      // 2. 读取新题目的样例
+      const newCases = await invoke<TestCase[]>("load_test_cases", { filename: stem });
+      
+      // 3. 覆盖前端界面的测试样例
+      setTestCases(newCases);
+      
+      // 4. 保存到当前正在写的文件夹的 cases.json 里
+      await invoke("save_test_cases", { 
+        filename: currentTarget, 
+        cases: newCases 
+      });
+
+      // 5. 毁尸灭迹：删掉冗余文件夹
+      await invoke("delete_workspace_file", { filename: stem });
+      
+      console.log("🎉 成功将样例偷入当前页面，现场已清理！");
+    } catch (e) {
+      console.error("合并样例失败了喵:", e);
+      alert("合并样例失败了喵: " + e); 
+    }
+  };
+
+  // 可选选项 C：取消/忽略
+  const handleIgnore = async (stem: string) => {
+    setIncomingProblem(null);
+    // 直接删掉生成的文件夹
+    await invoke("delete_workspace_file", { filename: stem });
   };
 
   // ── 创建新文件 ───────────────────────────────────────
@@ -533,6 +657,65 @@ const switchFile = async (filename: string) => {
 
           {/* 编辑器区域 */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px", minWidth: 0 }}>
+            
+            {/* ✨ 题目元数据毛玻璃渲染面板 ✨ */}
+            {problemMeta && (
+              <div
+                style={{
+                  // 完美的深色毛玻璃参数，完美契合你的 Hyprland 桌面！
+                  background: "rgba(30, 30, 35, 0.4)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                  padding: "12px 20px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
+                  zIndex: 10,
+                }}
+              >
+                {/* 左侧：题目名和来源 */}
+                <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
+                  <span style={{ fontWeight: 900, fontSize: "16px", color: "#82AAFF" /* 极客蓝 */ }}>
+                    {problemMeta.name}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)" }}>
+                    {problemMeta.group}
+                  </span>
+                </div>
+
+                {/* 右侧：限制参数和外链 */}
+                <div style={{ display: "flex", gap: "20px", fontSize: "13px", fontFamily: "monospace" }}>
+                  <div style={{ color: "#C3E88D" /* 护眼绿 */ }} title="时间限制">
+                    ⏱️ {problemMeta.timeLimit} ms
+                  </div>
+                  <div style={{ color: "#F07178" /* 警示红 */ }} title="内存限制">
+                    💾 {problemMeta.memoryLimit} MB
+                  </div>
+                  {problemMeta.url && (
+                    <a 
+                      href={problemMeta.url} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      style={{ 
+                        color: "#89DDFF", 
+                        textDecoration: "none",
+                        border: "1px solid rgba(137, 221, 255, 0.3)",
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                        transition: "all 0.2s"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "rgba(137, 221, 255, 0.1)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                    >
+                      🔗 原题链接
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+            
             <div style={{ flex: 1, minHeight: 0, border: "1px solid #444", borderRadius: "8px", overflow: "hidden" }}>
               <Editor
                 height="100%"
@@ -681,6 +864,63 @@ const switchFile = async (filename: string) => {
         </div>
 
       </div>
+
+      {/* 新题目接收弹窗 (只有 incomingProblem 有值时才显示) */}
+      {incomingProblem && (
+        <div 
+          style={{
+            position: "fixed",
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.4)", // 遮罩层
+            display: "flex", justifyContent: "center", alignItems: "center",
+            zIndex: 9999
+          }}
+        >
+          <div 
+            style={{
+              // 毛玻璃效果，很适合你的暗黑系界面
+              background: "rgba(30, 30, 35, 0.8)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              padding: "24px",
+              borderRadius: "12px",
+              width: "400px",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+              color: "#fff"
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "8px", fontSize: "18px" }}>
+              ✨ 接收到新题目数据
+            </h3>
+            <p style={{ color: "rgba(255,255,255,0.7)", marginBottom: "20px", wordBreak: "break-all" }}>
+              {incomingProblem}
+            </p>
+            
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button 
+                onClick={() => handleIgnore(incomingProblem!)}
+                style={{ background: "transparent", color: "#aaa", border: "none", cursor: "pointer", padding: "8px 16px" }}
+              >
+                忽略
+              </button>
+              
+              <button 
+                onClick={() => handleMergeToCurrent(incomingProblem!)}
+                style={{ background: "rgba(255, 255, 255, 0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "6px", cursor: "pointer", padding: "8px 16px" }}
+              >
+                导入当前页
+              </button>
+
+              <button 
+                onClick={() => handleOpenNewPage(incomingProblem!)}
+                style={{ background: "#4caf50", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", padding: "8px 16px", fontWeight: "bold" }}
+              >
+                新开代码页
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

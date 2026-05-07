@@ -8,12 +8,13 @@ pub fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| match c {
             // 把这些非法字符替换成下划线
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '.' => '_',
             _ => c,
         })
         .collect::<String>()
         // 去除首尾可能存在的空格或点号，防止出现类似 " .hidden" 这样的隐藏文件夹
-        .trim_matches(|c| c == ' ' || c == '.')
+        .trim_matches(|c: char| c == ' ' || c == '_' || c == '.')
+        .replace("__", "_")
         .to_string()
 }
 

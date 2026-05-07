@@ -84,8 +84,8 @@ function App() {
   type ViewMode = "code" | "problem";
 
   const [viewMode, setViewMode] = useState<ViewMode>("code");
-  const [problemHtml, setProblemHtml] = useState<string>(""); // 存放读取到的 HTML 文本
-  const [problemMarkdown, setProblemMarkdown] = useState<string>("");//markdown
+  const [problemMarkdown, setproblemMarkdown] = useState<string>(""); // 存放读取到的 MarkDown 文本
+  
 
   // ── 编辑器设置 ───────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
@@ -211,10 +211,10 @@ const switchFile = async (filename: string) => {
     try {
       // 呼叫后端读取刚才你写的那个 question.html
       const html = await invoke<string>("load_question_markdown", { filename });
-      setProblemHtml(html); 
+      setproblemMarkdown(html); 
     } catch (e) {
       console.error("加载题面失败:", e);
-      setProblemHtml("");
+      setproblemMarkdown("");
     }
 
     // 4. 更新 UI 状态
@@ -323,7 +323,7 @@ const switchFile = async (filename: string) => {
   // ---题目渲染相关------------------------------------------------------------------------------
 
   useEffect(() => {
-    if (viewMode === "problem" && problemHtml) {
+    if (viewMode === "problem" && problemMarkdown) {
       // 这里的 window.renderMathInElement 是引入的 auto-render 插件提供的
       // @ts-ignore
       if (window.renderMathInElement) {
@@ -339,7 +339,7 @@ const switchFile = async (filename: string) => {
         });
       }
     }
-  }, [viewMode, problemHtml])
+  }, [viewMode, problemMarkdown])
   // ── 创建新文件 ───────────────────────────────────────
   const createFile = async () => {
     const name = newFileName.trim();
@@ -798,7 +798,7 @@ const switchFile = async (filename: string) => {
                       fontSize: '15px'
                     }}
                   >
-                    {problemHtml ? (
+                    {problemMarkdown ? (
                       <ReactMarkdown
                         remarkPlugins={[remarkMath]}
                         rehypePlugins={[rehypeKatex]}
@@ -814,7 +814,7 @@ const switchFile = async (filename: string) => {
                           )
                         }}
                       >
-                        {problemHtml}
+                        {problemMarkdown}
                       </ReactMarkdown>
                     ) : (
                       <div style={{textAlign: 'center', marginTop: '100px', color: '#555'}}>

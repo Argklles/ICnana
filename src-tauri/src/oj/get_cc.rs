@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::oj::models::*;
-use crate::utils::fs as ic_fs;
+use crate::utils::ic_fs;
 
 /// 将字符串转换为安全的文件系统目录名
 pub fn sanitize_filename(name: &str) -> String {

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::utils::fs as ic_fs;
+use crate::utils::ic_fs;
 /*
 该命名空间与工作区的文件管理相关
 */

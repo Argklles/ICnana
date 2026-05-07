@@ -9,10 +9,11 @@
 - 接入了Competitive Companion，可以从浏览器上直接爬去样例到ICnana
 - 测评本地样例
 - 拉取题目信息，显示在编译区上方
+- 将题目渲染到ICnana中
+  (目前支持的有：洛谷，codeforce, atcode)
 
 ### 接下来打算实现的有
-- 将题目渲染到ICnana中 (进行中)
-- 渲染的同时，会自动拉取样例
+
 - 有历史题目的查询
 - 可以通过ICnana提交代码到oj上，返回测评结果
 - 内置一个数据生成器
@@ -36,3 +37,14 @@
   - AtCoder
   - 其他主流 OJ
 ---
+
+## 工作区文件格式：
+  workspace
+    |--题目文件夹1
+    |   |--cases.json   （样例文件）
+    |   |--main.cpp     （cpp代码源文件）
+    |   |--main.bin     （编译后的二进制文件）
+    |   |--question.json（题目信息）
+    |   |--question.md  （题目文本）
+    |--题目文件夹2
+    |...

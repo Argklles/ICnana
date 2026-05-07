@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-use crate::utils::fs as ic_fs;
+use crate::utils::ic_fs;
 /*
     该命名空间与历史样例有关，历史样例与同名cpp文件关联
 */

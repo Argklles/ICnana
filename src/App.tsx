@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Editor, { useMonaco } from "@monaco-editor/react";
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import "./App.css";
 
 interface TestCase {
@@ -75,6 +79,13 @@ function App() {
 
   // 存放当前题目的信息
   const [problemMeta, setProblemMeta] = useState<QuestionMeta | null>(null);
+
+  /*用于渲染题目正文*/
+  type ViewMode = "code" | "problem";
+
+  const [viewMode, setViewMode] = useState<ViewMode>("code");
+  const [problemHtml, setProblemHtml] = useState<string>(""); // 存放读取到的 HTML 文本
+  const [problemMarkdown, setProblemMarkdown] = useState<string>("");//markdown
 
   // ── 编辑器设置 ───────────────────────────────────────
   const [showSettings, setShowSettings] = useState(false);
@@ -197,6 +208,15 @@ const switchFile = async (filename: string) => {
       setProblemMeta(null); // 如果没有，就清空面板
     }
 
+    try {
+      // 呼叫后端读取刚才你写的那个 question.html
+      const html = await invoke<string>("load_question_markdown", { filename });
+      setProblemHtml(html); 
+    } catch (e) {
+      console.error("加载题面失败:", e);
+      setProblemHtml("");
+    }
+
     // 4. 更新 UI 状态
     setActiveFile(filename);
     localStorage.setItem("icnana_active_file", filename);
@@ -300,7 +320,26 @@ const switchFile = async (filename: string) => {
     // 直接删掉生成的文件夹
     await invoke("delete_workspace_file", { filename: stem });
   };
+  // ---题目渲染相关------------------------------------------------------------------------------
 
+  useEffect(() => {
+    if (viewMode === "problem" && problemHtml) {
+      // 这里的 window.renderMathInElement 是引入的 auto-render 插件提供的
+      // @ts-ignore
+      if (window.renderMathInElement) {
+        // @ts-ignore
+        window.renderMathInElement(document.querySelector(".problem-content-root"), {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\(', right: '\\)', display: false },
+            { left: '\\[', right: '\\]', display: true }
+          ],
+          throwOnError: false
+        });
+      }
+    }
+  }, [viewMode, problemHtml])
   // ── 创建新文件 ───────────────────────────────────────
   const createFile = async () => {
     const name = newFileName.trim();
@@ -656,107 +695,180 @@ const switchFile = async (filename: string) => {
           />
 
           {/* 编辑器区域 */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px", minWidth: 0 }}>
-            
-            {/* ✨ 题目元数据毛玻璃渲染面板 ✨ */}
-            {problemMeta && (
-              <div
-                style={{
-                  // 完美的深色毛玻璃参数，完美契合你的 Hyprland 桌面！
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px", minWidth: 0, height: "100%" }}>
+  
+            {/* ── 中间主面板 ────────────────────────────────────────────────── */}
+            <div className="center-panel" style={{ 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden', 
+              border: "1px solid #444", 
+              borderRadius: "8px",
+              background: "#1e1e1e" 
+            }}>
+
+              {/* 1. 视图切换 Tab */}
+              <div style={{ 
+                display: 'flex', 
+                background: 'rgba(20, 20, 25, 0.8)', 
+                padding: '4px 12px',
+                gap: '8px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                zIndex: 20
+              }}>
+                <button 
+                  onClick={() => setViewMode("code")}
+                  style={{
+                    background: viewMode === "code" ? "rgba(255,255,255,0.1)" : "transparent",
+                    color: viewMode === "code" ? "#fff" : "#888",
+                    border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px'
+                  }}
+                >
+                  💻 代码实现
+                </button>
+                <button 
+                  onClick={() => setViewMode("problem")}
+                  style={{
+                    background: viewMode === "problem" ? "rgba(255,255,255,0.1)" : "transparent",
+                    color: viewMode === "problem" ? "#fff" : "#888",
+                    border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px'
+                  }}
+                >
+                  📖 题目描述
+                </button>
+              </div>
+              
+              {/* 2. 题目元数据毛玻璃面板 */}
+              {problemMeta && (
+                <div style={{
                   background: "rgba(30, 30, 35, 0.4)",
                   backdropFilter: "blur(12px)",
                   WebkitBackdropFilter: "blur(12px)",
                   borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  padding: "12px 20px",
+                  padding: "10px 20px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
                   zIndex: 10,
-                }}
-              >
-                {/* 左侧：题目名和来源 */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
-                  <span style={{ fontWeight: 900, fontSize: "16px", color: "#82AAFF" /* 极客蓝 */ }}>
-                    {problemMeta.name}
-                  </span>
-                  <span style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)" }}>
-                    {problemMeta.group}
-                  </span>
+                }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
+                    <span style={{ fontWeight: 900, fontSize: "15px", color: "#82AAFF" }}>{problemMeta.name}</span>
+                    <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)" }}>{problemMeta.group}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "15px", fontSize: "12px", fontFamily: "monospace" }}>
+                    <div style={{ color: "#C3E88D" }}>⏱️ {problemMeta.timeLimit} ms</div>
+                    <div style={{ color: "#F07178" }}>💾 {problemMeta.memoryLimit} MB</div>
+                    {problemMeta.url && (
+                      <a href={problemMeta.url} target="_blank" rel="noreferrer" style={{ color: "#89DDFF", textDecoration: "none", opacity: 0.8 }}>🔗 原题</a>
+                    )}
+                  </div>
                 </div>
+              )}
 
-                {/* 右侧：限制参数和外链 */}
-                <div style={{ display: "flex", gap: "20px", fontSize: "13px", fontFamily: "monospace" }}>
-                  <div style={{ color: "#C3E88D" /* 护眼绿 */ }} title="时间限制">
-                    ⏱️ {problemMeta.timeLimit} ms
+              {/* 3. 动态内容区 */}
+              <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                {viewMode === "code" ? (
+                  /* ✅ 模式一：代码编辑器 */
+                  <Editor
+                    height="100%"
+                    defaultLanguage="cpp"
+                    theme="vs-dark"
+                    value={code}
+                    onChange={v => setCode(v || "")}
+                    options={{ 
+                      fontSize: 16, 
+                      minimap: { enabled: false }, 
+                      automaticLayout: true, 
+                      tabSize: indentSize, 
+                      insertSpaces: true,
+                      padding: { top: 10 }
+                    }}
+                  />
+                ) : (
+                  /* ✅ 模式二：题面渲染 */
+                  <div 
+                    className="problem-content-root"
+                    style={{ 
+                      height: '100%',
+                      overflowY: 'auto',
+                      padding: '24px 40px', 
+                      lineHeight: 1.7, 
+                      color: '#ddd',
+                      fontSize: '15px'
+                    }}
+                  >
+                    {problemHtml ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={{
+                          a: ({node, ...props}) => <a target="_blank" rel="noreferrer" style={{color: "#89DDFF"}} {...props} />,
+                          code: ({node, inline, className, children, ...props}: any) => (
+                            inline ? 
+                              <code style={{ background: "rgba(255,255,255,0.1)", padding: "2px 4px", borderRadius: "3px" }} {...props}>
+                                {children}
+                              </code> 
+                              : 
+                              <code {...props}>{children}</code>
+                          )
+                        }}
+                      >
+                        {problemHtml}
+                      </ReactMarkdown>
+                    ) : (
+                      <div style={{textAlign: 'center', marginTop: '100px', color: '#555'}}>
+                        暂无题面数据喵...
+                      </div>
+                    )}
                   </div>
-                  <div style={{ color: "#F07178" /* 警示红 */ }} title="内存限制">
-                    💾 {problemMeta.memoryLimit} MB
-                  </div>
-                  {problemMeta.url && (
-                    <a 
-                      href={problemMeta.url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      style={{ 
-                        color: "#89DDFF", 
-                        textDecoration: "none",
-                        border: "1px solid rgba(137, 221, 255, 0.3)",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        transition: "all 0.2s"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "rgba(137, 221, 255, 0.1)"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                    >
-                      🔗 原题链接
-                    </a>
-                  )}
-                </div>
+                )}
               </div>
-            )}
-            
-            <div style={{ flex: 1, minHeight: 0, border: "1px solid #444", borderRadius: "8px", overflow: "hidden" }}>
-              <Editor
-                height="100%"
-                defaultLanguage="cpp"
-                theme="vs-dark"
-                value={code}
-                onChange={v => setCode(v || "")}
-                options={{ fontSize: 16, minimap: { enabled: false }, automaticLayout: true, tabSize: indentSize, insertSpaces: true }}
-              />
             </div>
+            
+            {/* ── 底部运行按钮 ────────────────────────────────────────────────── */}
             <button
               onClick={async () => {
                 if (!activeFile) return;
+                // 切换到代码视图，方便观察运行结果
+                setViewMode("code"); 
+                
                 const loading = testCases.map(c => ({ 
                   ...c,
                   actual: "正在运行喵...",
-                  status: "pending" as const }));
-
+                  status: "pending" as const 
+                }));
                 setTestCases(loading);
-                const res = await invoke<TestCase[]>("judge_all", { 
-                  filename: activeFile, 
-                  code,
-                  cases: loading });
-
-                setTestCases(res);
 
                 try {
-                    // 这里的路径我们可以通过之前写好的 ic_fs 逻辑在后端自动对应
-                    // 假设你已经在后端处理了路径，这里直接传文件名或对应的路径即可
-                    await invoke("save_test_cases", { 
-                      filename: activeFile, 
-                      cases: loading 
-                    });
-                    console.log("样例已自动同步到本地文件喵！");
-                  } catch (e) {
-                    console.error("保存失败了喵:", e);
-                  }
+                  const res = await invoke<TestCase[]>("judge_all", { 
+                    filename: activeFile, 
+                    code,
+                    cases: loading 
+                  });
+                  setTestCases(res);
+                  await invoke("save_test_cases", { filename: activeFile, cases: res });
+                } catch (e) {
+                  console.error("运行或保存失败了喵:", e);
                 }
-              }
-              style={{ marginTop: "10px", padding: "12px", background: "#40b864", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold", flexShrink: 0 }}
-            >▶ 运行全部样例 {activeFile ? `(${activeFile})` : ""}</button>
+              }}
+              style={{ 
+                marginTop: "10px", 
+                padding: "12px", 
+                background: "#40b864", 
+                color: "white", 
+                border: "none", 
+                borderRadius: "4px", 
+                cursor: "pointer", 
+                fontWeight: "bold", 
+                flexShrink: 0,
+                transition: "filter 0.2s"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.filter = "brightness(1.1)"}
+              onMouseLeave={(e) => e.currentTarget.style.filter = "brightness(1.0)"}
+            >
+              ▶ 运行全部样例 {activeFile ? `(${activeFile})` : ""}
+            </button>
           </div>
 
           {/* 分隔条 2：编辑器 ↔ 测试面板 */}

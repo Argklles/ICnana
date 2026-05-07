@@ -47,3 +47,28 @@ pub fn workspace_question(strm: &str) -> PathBuf {
 pub fn ensure_workspace() -> std::io::Result<()> {
     fs::create_dir_all(workspace_dir())
 }
+
+#[tauri::command]
+pub fn load_question_html(filename: String) -> Result<String, String> {
+    let path = workspace_dir().join(&filename).join("question.html");
+
+    if !path.exists() { return Ok("".to_string())};
+
+    fs::read_to_string(path)
+        .map_err(|e| format!("路径读取失败啦，\n 报错：{e}"))
+}
+//计算html文件路径
+
+#[tauri::command]
+pub fn load_question_markdown(filename: String) -> Result<String, String> {
+    // 🌟 这里是重点！改成去找 question.md
+    let path = workspace_dir().join(&filename).join("question.md"); 
+    
+    if !path.exists() {
+        return Ok("".to_string()); // 找不到就返回空
+    }
+
+    std::fs::read_to_string(path)
+        .map_err(|e| format!("读取 Markdown 失败喵: {}", e))
+}
+//计算mark文件路径

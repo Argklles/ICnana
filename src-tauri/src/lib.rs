@@ -1,4 +1,5 @@
 use axum::{routing::post, Router};
+use tauri::Manager;
 
 pub mod command;
 pub mod compiler;
@@ -10,6 +11,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            app.manage(command::manual_interaction::InteractionState::default());
             let app_handle = app.handle().clone();
             let state = command::companion::AppState { app_handle };
 
@@ -30,6 +32,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             command::read_and_judge::judge_all,
             command::read_and_judge::check_syntax,
+            command::read_and_judge::judge_interactive,
+            command::read_and_judge::load_interactor,
+            command::read_and_judge::save_interactor,
+            command::manual_interaction::start_manual_interaction,
+            command::manual_interaction::send_interaction_input,
+            command::manual_interaction::stop_manual_interaction,
+            command::compiler::get_compiler_info,
 
             command::workspace::list_workspace_files,
             command::workspace::load_workspace_file,
@@ -37,6 +46,13 @@ pub fn run() {
             command::workspace::new_workspace_file,
             command::workspace::delete_workspace_file,
             command::workspace::rename_workspace_file,
+            command::workspace::save_code_template,
+            command::workspace::set_problem_type,
+
+            command::collections::list_collections,
+            command::collections::create_collection,
+            command::collections::delete_collection,
+            command::collections::toggle_in_collection,
 
             command::system::open_browser,
 

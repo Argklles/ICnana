@@ -35,9 +35,20 @@ pub fn process_cc_payload(payload: CCPayload) -> Result<String, String> {
         url: payload.url,
         time_limit: payload.time_limit as u64,
         memory_limit: payload.memory_limit as u64,
+        problem_type: if payload.interactive {
+            "interactive".to_string()
+        } else {
+            "normal".to_string()
+        },
     };
     
-    let meta_json = serde_json::to_string_pretty(&meta)
+    // 顺带记下来源 OJ 与收藏状态，前端侧边栏据此自动分组
+    let mut meta_value = serde_json::to_value(&meta)
+        .map_err(|e| format!("序列化题目元数据失败: {}", e))?;
+    meta_value["oj"] = serde_json::json!(detect_oj(&meta.url));
+    meta_value["favorite"] = serde_json::json!(false);
+
+    let meta_json = serde_json::to_string_pretty(&meta_value)
         .map_err(|e| format!("序列化题目元数据失败: {}", e))?;
     fs::write(folder_path.join("question.json"), meta_json)
         .map_err(|e| format!("写入题目元数据失败: {}", e))?;
@@ -58,14 +69,18 @@ pub fn process_cc_payload(payload: CCPayload) -> Result<String, String> {
     fs::write(folder_path.join("cases.json"), cases_json)
         .map_err(|e| format!("写入测试样例失败: {}", e))?;
 
-    // 5. 初始化代码文件
+    // 4.5 按 URL 解析出的 OJ 自动归入对应收藏夹（洛谷 / Codeforces / AtCoder / 牛客）
+    crate::command::collections::assign_to_oj(&stem, &detect_oj(&meta.url));
+
+    // 5. 初始化代码文件：题目信息头 + 用户在设置里配置的代码模板
     let cpp_path = folder_path.join("main.cpp");
     if !cpp_path.exists() {
-        let template = format!(
-            "// Problem: {}\n// Group: {}\n// URL: {}\n// Memory Limit: {} MB\n// Time Limit: {} ms\n#include <bits/stdc++.h>\n\nint main() {{\n    std::ios::sync_with_stdio(false);\n    std::cin.tie(nullptr);\n\n    return 0;\n}}",
+        let header = format!(
+            "// Problem: {}\n// Group: {}\n// URL: {}\n// Memory Limit: {} MB\n// Time Limit: {} ms\n\n",
             meta.name, meta.group, meta.url, meta.memory_limit, meta.time_limit
         );
-        fs::write(&cpp_path, template)
+        let content = format!("{}{}", header, ic_fs::load_code_template());
+        fs::write(&cpp_path, content)
             .map_err(|e| format!("模板文件写入失败: {}", e))?;
     }
 

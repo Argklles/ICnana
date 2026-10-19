@@ -1,17 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState , useRef , useEffect} from "react";
-import { TestCase , QuestionMeta } from "../config/types"
-import { listen } from "@tauri-apps/api/event";
-import { formatPostcssSourceMap } from "vite";
+import { TestCase , QuestionMeta, WorkspaceFile, Collection } from "../config/types"
+import { FAVORITES_ID } from "../config/constants"
 
 export function useWorkspace() {
 
-    const [files, setFiles] = useState<string[]> ([]);
+    const [files, setFiles] = useState<WorkspaceFile[]> ([]);
     const [activeFile, setActiveFile] = useState<string>("");
     const [code, setCode] = useState<string>("");
     const [testCases, setTestCases] = useState<TestCase[]>([{input: "", output: "", actual: "", status: "pending"}]);
     const [problemMeta, setProblemMeta] = useState<QuestionMeta|null>(null);
     const [problemMarkdown, setproblemMarkdown] = useState<string>(""); 
+    const [collections, setCollections] = useState<Collection[]>([]);
 
     const activeFileRef = useRef(activeFile);
     const codeRef = useRef(code);
@@ -26,17 +26,20 @@ export function useWorkspace() {
         const initWorkspace = async () => {
             try {
                 // 1. 向 Rust 后端请求最新的文件列表
-                const initialFiles = await invoke<string[]>("list_workspace_files");
+                const initialFiles = await invoke<WorkspaceFile[]>("list_workspace_files");
                 setFiles(initialFiles);
+
+                const initialCollections = await invoke<Collection[]>("list_collections");
+                setCollections(initialCollections);
 
                 // 2. 如果有文件，自动打开一个
                 if (initialFiles.length > 0) {
                     // 尝试从本地存储读取上次关闭前正在写的文件
                     const lastActive = localStorage.getItem("icnana_active_file");
-                    if (lastActive && initialFiles.includes(lastActive)) {
+                    if (lastActive && initialFiles.some(f => f.stem === lastActive)) {
                         await switchFile(lastActive); // 恢复上次的现场
                     } else {
-                        await switchFile(initialFiles[0]); // 如果没有记录，默认打开第一个
+                        await switchFile(initialFiles[0].stem); // 如果没有记录，默认打开第一个
                     }
                 }
             } catch (e) {
@@ -55,7 +58,7 @@ export function useWorkspace() {
         try {
         // 传入用户自定义模板
         const created = await invoke<string>("new_workspace_file", { filename: name, template: nowCodeTemplate });
-        const updated = await invoke<string[]>("list_workspace_files");
+        const updated = await invoke<WorkspaceFile[]>("list_workspace_files");
         setFiles(updated);
         
         await switchFile(created);
@@ -67,12 +70,13 @@ export function useWorkspace() {
         if (files.length <= 1) { alert("至少保留一个文件喵~"); return; }
         if (!confirm(`确定删除 ${filename}？`)) return;
         await invoke("delete_workspace_file", { filename });
-        const updated = await invoke<string[]>("list_workspace_files");
+        const updated = await invoke<WorkspaceFile[]>("list_workspace_files");
         setFiles(updated);
+        await refreshCollections();
         if (activeFile === filename) {
         // ⚠️ 必须先清空 ref，否则 switchFile 的 auto-save 会把刚删的文件重建回来
         activeFileRef.current = "";
-        await switchFile(updated[0]);
+        await switchFile(updated[0].stem);
         }
     };
 
@@ -82,8 +86,9 @@ export function useWorkspace() {
         if (!val || val === oldName.replace(".cpp", "")) { return; }
         try {
         const newName = await invoke<string>("rename_workspace_file", { oldName, newName: val });
-        const updated = await invoke<string[]>("list_workspace_files");
+        const updated = await invoke<WorkspaceFile[]>("list_workspace_files");
         setFiles(updated);
+        await refreshCollections();
         if (activeFile === oldName) {
             setActiveFile(newName);
             localStorage.setItem("icnana_active_file", newName);
@@ -146,6 +151,65 @@ export function useWorkspace() {
         localStorage.setItem("icnana_active_file", filename);
     };
 
+    // ── 集合（收藏夹就是 id 为 favorites 的那个内置集合）───────
+    const refreshCollections = async () => {
+        try {
+            setCollections(await invoke<Collection[]>("list_collections"));
+        } catch (e) {
+            console.error("刷新集合失败喵:", e);
+        }
+    };
+
+    // 把某个题目加入 / 移出集合，乐观更新
+    const toggleInCollection = async (id: string, stem: string, member: boolean) => {
+        setCollections(prev => prev.map(c => {
+            if (c.id !== id) return c;
+            const items = member
+                ? (c.items.includes(stem) ? c.items : [...c.items, stem].sort())
+                : c.items.filter(s => s !== stem);
+            return { ...c, items };
+        }));
+
+        // 收藏集合同时要反映到文件列表的 favorite 字段（决定星标和排序）
+        if (id === FAVORITES_ID) {
+            setFiles(prev => prev.map(f => (f.stem === stem ? { ...f, favorite: member } : f)));
+        }
+
+        try {
+            await invoke("toggle_in_collection", { id, stem, member });
+        } catch (e) {
+            console.error("切换集合成员失败喵:", e);
+            await refreshCollections();
+        }
+    };
+
+    const toggleFavorite = async (stem: string, favorite: boolean) => {
+        await toggleInCollection(FAVORITES_ID, stem, favorite);
+    };
+
+    const createCollection = async (name: string): Promise<Collection | null> => {
+        const trimmed = name.trim();
+        if (!trimmed) return null;
+        try {
+            const created = await invoke<Collection>("create_collection", { name: trimmed });
+            setCollections(prev => [...prev, created]);
+            return created;
+        } catch (e) {
+            alert(e);
+            return null;
+        }
+    };
+
+    const deleteCollection = async (id: string) => {
+        if (!confirm("删除这个集合？（题目本身不会被删除）")) return;
+        try {
+            await invoke("delete_collection", { id });
+            setCollections(prev => prev.filter(c => c.id !== id));
+        } catch (e) {
+            alert(e);
+        }
+    };
+
     return {
         //数据
         files, setFiles,
@@ -154,10 +218,16 @@ export function useWorkspace() {
         testCases, setTestCases,
         problemMeta, setProblemMeta,
         problemMarkdown, setproblemMarkdown, 
+        collections, setCollections,
         //方法
         createFile,
         deleteFile,
         renameFile,
-        switchFile
+        switchFile,
+        toggleFavorite,
+        toggleInCollection,
+        createCollection,
+        deleteCollection,
+        refreshCollections
     }
 }

@@ -23,8 +23,16 @@ body {
   background: #2a2d2e !important;
 }
 
-/* 悬停时显示删除按钮 */
+/* 悬停时显示删除按钮 / 收藏星标 */
 .file-item:hover .file-delete-btn {
+  opacity: 1 !important;
+}
+
+.file-item:hover .file-star-btn {
+  opacity: 1 !important;
+}
+
+.file-item:hover .file-collection-btn {
   opacity: 1 !important;
 }
 

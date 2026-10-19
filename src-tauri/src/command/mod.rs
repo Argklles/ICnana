@@ -3,3 +3,6 @@ pub mod workspace;
 pub mod companion;
 pub mod system;
 pub mod history_testcase;
+pub mod compiler;
+pub mod collections;
+pub mod manual_interaction;

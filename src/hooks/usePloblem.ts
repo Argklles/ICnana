@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 // 记得引入你之前定义的类型
-import { TestCase } from "../config/types"; 
+import { TestCase, WorkspaceFile } from "../config/types"; 
 
 // 🎯 核心概念：因为你的 handleMergeToCurrent 需要用到 activeFile 等数据
 // 这些数据属于 useWorkspace，所以我们需要通过参数把它们传进这个 Hook 里
@@ -10,10 +10,12 @@ interface UseProblemProps {
   activeFile: string;
   switchFile: (file: string) => Promise<void>;
   setTestCases: React.Dispatch<React.SetStateAction<TestCase[]>>;
-  setFiles: React.Dispatch<React.SetStateAction<string[]>>;
+  setFiles: React.Dispatch<React.SetStateAction<WorkspaceFile[]>>;
+  /** 拉取题目后刷新集合（新 OJ 分组是后端刚建出来的） */
+  refreshCollections: () => Promise<void>;
 }
 
-export function useProblem({ activeFile, switchFile, setTestCases, setFiles }: UseProblemProps) {
+export function useProblem({ activeFile, switchFile, setTestCases, setFiles, refreshCollections }: UseProblemProps) {
   // 1️⃣ 状态必须声明在函数内部！
   const [incomingProblem, setIncomingProblem] = useState<string | null>(null);
 
@@ -34,8 +36,10 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles }: U
   // 3️⃣ 你的处理函数们
   const handleOpenNewPage = async (stem: string) => {
     setIncomingProblem(null);
-    const updatedFiles = await invoke<string[]>("list_workspace_files");
+    const updatedFiles = await invoke<WorkspaceFile[]>("list_workspace_files");
     setFiles(updatedFiles);
+    // 后端在拉取落盘时已经把这道题归进对应 OJ 的收藏夹，这里同步一次界面
+    await refreshCollections();
     await switchFile(stem);
   };
 
@@ -69,8 +73,9 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles }: U
       console.log("🎉 成功将样例偷入当前页面，现场已清理！");
     } catch (e) {
       console.error("合并样例失败了喵:", e);
-      const updatedFiles = await invoke<string[]>("list_workspace_files");
+      const updatedFiles = await invoke<WorkspaceFile[]>("list_workspace_files");
       setFiles(updatedFiles);
+      await refreshCollections();
       alert("目标文件可能已经被删除了喵，列表已为你刷新！报错：" + e); 
     }
   };
@@ -78,6 +83,8 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles }: U
   const handleIgnore = async (stem: string) => {
     setIncomingProblem(null);
     await invoke("delete_workspace_file", { filename: stem });
+    // 删除会顺手清掉集合里的引用，界面跟着刷新
+    await refreshCollections();
   };
 
   // 4️⃣ 最后，把 UI 组件需要用到的状态和方法 return 出去

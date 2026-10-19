@@ -1,0 +1,10 @@
+{
+  "name": "示范-1-手动对答",
+  "group": "示例",
+  "url": "",
+  "timeLimit": 2000,
+  "memoryLimit": 256,
+  "problemType": "interactive",
+  "favorite": false,
+  "oj": "other"
+}

@@ -14,7 +14,7 @@ import { useBrowser } from "./hooks/useBrowser";
 import FileSidebar from "./components/workspace/FileSildbar";
 import EditorArea from "./components/workspace/EditorArea";
 import TestPanel from "./components/workspace/TestPanel";
-import BrowserView from "./components/browser/BrowserView";
+import SettingsPanel from "./components/settings/SettingsPanel";
 
 export default function App() {
   // ── 全局布局状态 ──
@@ -30,7 +30,8 @@ export default function App() {
     activeFile: workspace.activeFile,
     switchFile: workspace.switchFile,
     setTestCases: workspace.setTestCases,
-    setFiles: workspace.setFiles
+    setFiles: workspace.setFiles,
+    refreshCollections: workspace.refreshCollections
   });
 
   // ── 面板宽度（可拖动布局） ──
@@ -81,13 +82,13 @@ export default function App() {
       
       {/* 🟢 顶部导航与工具栏 (TopNavBar 部分暂留此处，若嫌长后续可单独抽离) */}
       <div style={{ display: "flex", background: "#252526", padding: "8px 12px 0 12px", gap: "4px", borderBottom: "1px solid #333", alignItems: "center", zIndex: 20, flexShrink: 0 }}>
-        <div onClick={() => setActiveTab("code")} style={tabStyle(activeTab === "code")}>💻 代码实验室</div>
-        <div onClick={() => setActiveTab("browser")} style={tabStyle(activeTab === "browser")}>🌐 OJ 浏览器</div>
+        <div onClick={() => setActiveTab("code")} style={tabStyle(activeTab === "code")}>IDE</div>
+        {/* <div onClick={() => setActiveTab("browser")} style={tabStyle(activeTab === "browser")}>🌐 OJ 浏览器</div> */}
 
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: "8px", paddingBottom: "8px", marginLeft: "20px", alignItems: "center" }}>
           
           {/* ⚙️ 设置按钮 (接入 setting Hook) */}
-          <button onClick={() => setting.setShowSettings(!setting.showSettings)} style={{ ...favButtonStyle, padding: "4px 9px", fontSize: "13px", background: setting.showSettings ? "#444" : "#2d2d2d" }}>⚙️</button>
+          <button onClick={() => (setting.showSettings ? setting.setShowSettings(false) : setting.openSettings())} style={{ ...favButtonStyle, padding: "4px 9px", fontSize: "13px", background: setting.showSettings ? "#444" : "#2d2d2d" }}>⚙️</button>
           
           <span style={{ fontSize: "11px", color: "#555", userSelect: "none" }}>|</span>
           <span style={{ fontSize: "11px", color: "#666", alignSelf: "center", marginRight: "4px" }}>快捷收藏:</span>
@@ -112,6 +113,11 @@ export default function App() {
             files={workspace.files} activeFile={workspace.activeFile}
             createFile={workspace.createFile} deleteFile={workspace.deleteFile}
             renameFile={workspace.renameFile} switchFile={workspace.switchFile}
+            toggleFavorite={workspace.toggleFavorite}
+            collections={workspace.collections}
+            toggleInCollection={workspace.toggleInCollection}
+            createCollection={workspace.createCollection}
+            deleteCollection={workspace.deleteCollection}
             width={fileSidebarWidth} codeTemplate={setting.codeTemplate}
           />
 
@@ -122,6 +128,8 @@ export default function App() {
             activeFile={workspace.activeFile} code={workspace.code} setCode={workspace.setCode}
             indentSize={setting.indentSize} problemMeta={workspace.problemMeta}
             problemMarkdown={workspace.problemMarkdown} testCases={workspace.testCases} setTestCases={workspace.setTestCases}
+            setProblemMeta={workspace.setProblemMeta}
+            compileSettings={setting.compileSettings}
           />
 
           <div className="resize-divider" onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", zIndex: 5 }} />
@@ -132,11 +140,11 @@ export default function App() {
           />
         </div>
 
-        {/* ── 🌐 OJ 浏览器组件 (受 activeTab 控制) ── */}
+        {/* ── 🌐 OJ 浏览器组件 (受 activeTab 控制) ──
         <BrowserView 
           isActive={activeTab === "browser"} ojUrl={browser.ojUrl} setOjUrl={browser.setOjUrl}
           browserHistory={browser.browserHistory} clearHistory={browser.clearHistory}
-        />
+        /> */}
       </div>
 
       {/* 🟢 新题目接收弹窗 (接入 problemHandler) */}
@@ -152,6 +160,21 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ⚙️ 设置面板（编译环境 / 编辑器） */}
+      {setting.showSettings && (
+        <SettingsPanel
+          onClose={() => setting.setShowSettings(false)}
+          onSave={setting.saveSettings}
+          onReset={setting.resetSettings}
+          editingTemplate={setting.editingTemplate}
+          setEditingTemplate={setting.setEditingTemplate}
+          editingIndent={setting.editingIndent}
+          setEditingIndent={setting.setEditingIndent}
+          editingCompile={setting.editingCompile}
+          setEditingCompile={setting.setEditingCompile}
+        />
       )}
     </div>
   );

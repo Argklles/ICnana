@@ -1,23 +1,56 @@
 use std::io::{Read, Write};
 use std::process::Stdio;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::compiler::hidden_cmd::create_hidden_command;
+use crate::compiler::hidden_cmd::{create_compiler_command, create_hidden_command, resolve_compiler};
+use crate::compiler::options::CompileOptions;
 
 /*
 该命名空间用于编译和运行单个cpp文件
 */
 
+/// 用默认参数编译（参数见 compiler/options.rs，默认 -std=c++14 -O2）。
 pub fn compile_code(src: &Path, bin: &Path) -> Result<(), String> {
-    let output = create_hidden_command("g++")
+    compile_code_with(src, bin, &CompileOptions::from_env())
+}
+
+/// 按指定参数编译。
+///
+/// 开 O2 的目的是让本地跑出来的耗时接近评测机；不开优化会让选手对常数和复杂度产生误判。
+pub fn compile_code_with(src: &Path, bin: &Path, opts: &CompileOptions) -> Result<(), String> {
+    compile_code_with_includes(src, bin, opts, &[])
+}
+
+/// 同上，但可以额外加 `-I` 目录（交互器要用 testlib.h）
+pub fn compile_code_with_includes(
+    src: &Path,
+    bin: &Path,
+    opts: &CompileOptions,
+    includes: &[PathBuf],
+) -> Result<(), String> {
+    let mut cmd = create_compiler_command();
+    for flag in opts.compile_args() {
+        cmd.arg(flag);
+    }
+    for dir in includes {
+        cmd.arg("-I").arg(dir);
+    }
+
+    let output = cmd
         .arg(src)
         .arg("-o")
         .arg(bin)
         .output()
-        .map_err(|e| format!("无法启动编译器: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "无法启动编译器（{}）: {}\n请安装 GCC，或确认内置工具链已就位。",
+                resolve_compiler().display(),
+                e
+            )
+        })?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());

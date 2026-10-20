@@ -24,7 +24,8 @@ dist-ssr
 *.sw?
 
 # 编译工作区（临时文件，不提交）
-workspace/
+# 只忽略仓库根目录的那个 workspace，别把 src/components/workspace 也吞了
+/workspace/
 
 # OJ 浏览器 Cookie 缓存（运行时生成，不提交）
 src-tauri/.oj_cookies/

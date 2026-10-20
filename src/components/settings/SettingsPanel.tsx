@@ -110,7 +110,17 @@ export default function SettingsPanel({
             {compiler ? (
               compiler.found ? (
                 <>
-                  <div>{compiler.version || "编译器可用"}</div>
+                  <div>
+                    <span style={{
+                      display: "inline-block", padding: "1px 6px", borderRadius: 4, marginRight: 6,
+                      fontSize: 10, fontWeight: 700,
+                      background: compiler.bundled ? "rgba(64,184,100,0.18)" : "rgba(138,180,248,0.16)",
+                      color: compiler.bundled ? "#7ee2a8" : "#8ab4f8",
+                    }}>
+                      {compiler.bundled ? "内置工具链" : "系统编译器"}
+                    </span>
+                    {compiler.version || "编译器可用"}
+                  </div>
                   <div style={{ color: "#5c6470" }}>{compiler.path}</div>
                 </>
               ) : (
@@ -125,6 +135,19 @@ export default function SettingsPanel({
               <div>正在检测编译器…</div>
             )}
           </div>
+
+          {compiler && !compiler.found && (
+            <div style={{
+              background: "rgba(240,183,47,0.10)", border: "1px solid rgba(240,183,47,0.35)",
+              borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 11,
+              color: "#d8c48a", lineHeight: 1.8,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>怎么装编译器</div>
+              <div>Windows：装 <a href="https://winlibs.com/" target="_blank" rel="noreferrer" style={{ color: "#8ab4f8" }}>winlibs 的 MinGW-w64</a>，解压后把 <code>bin</code> 目录加进 PATH；官方安装包后续会自带工具链。</div>
+              <div>Linux：<code>sudo apt install g++</code>（Debian/Ubuntu）或 <code>sudo dnf install gcc-c++</code>（Fedora）。</div>
+              <div>macOS：<code>xcode-select --install</code>。</div>
+            </div>
+          )}
 
           <div style={rowStyle}>
             <div style={{ flex: 1 }}>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
 // 1️⃣ 引入类型和配置
@@ -33,6 +34,16 @@ export default function App() {
     setFiles: workspace.setFiles,
     refreshCollections: workspace.refreshCollections
   });
+
+  // ── 首次启动引导：没有编译器时给一条横幅，别等到点了运行才报错 ──
+  const [compilerMissing, setCompilerMissing] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(false);
+
+  useEffect(() => {
+    invoke<any>("get_compiler_info")
+      .then(info => setCompilerMissing(!info.found))
+      .catch(() => { /* 探测失败就不打扰用户 */ });
+  }, []);
 
   // ── 面板宽度（可拖动布局） ──
   const [fileSidebarWidth, setFileSidebarWidth] = useState(160);
@@ -101,6 +112,31 @@ export default function App() {
           ))}
         </div>
       </div>
+
+      {/* 🟢 首次启动引导横幅 */}
+      {compilerMissing && !guideDismissed && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: "10px",
+          padding: "8px 14px", background: "rgba(240,183,47,0.12)",
+          borderBottom: "1px solid rgba(240,183,47,0.3)",
+          color: "#d8c48a", fontSize: "12px", flexShrink: 0,
+        }}>
+          <span>⚠️ 没有找到 C++ 编译器，现在还不能编译和测评。</span>
+          <button
+            onClick={() => { setting.openSettings(); setGuideDismissed(true); }}
+            style={{ background: "rgba(240,183,47,0.2)", border: "1px solid rgba(240,183,47,0.45)", color: "#f4d27a", borderRadius: 4, padding: "3px 10px", fontSize: "11px", cursor: "pointer" }}
+          >
+            查看安装方法
+          </button>
+          <button
+            onClick={() => setGuideDismissed(true)}
+            title="先不管"
+            style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#a08f4f", cursor: "pointer", fontSize: "14px" }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* 🟢 主体内容区域 */}
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>

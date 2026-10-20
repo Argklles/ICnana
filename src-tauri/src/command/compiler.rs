@@ -9,6 +9,8 @@ pub struct CompilerInfo {
     pub path: String,
     pub version: String,
     pub found: bool,
+    /// true = 用的是随安装包分发的内置工具链
+    pub bundled: bool,
     pub platform: String,
 }
 
@@ -30,6 +32,10 @@ pub fn get_compiler_info() -> CompilerInfo {
     let mut cmd = create_compiler_command();
     cmd.arg("--version");
 
+    let bundled = crate::compiler::hidden_cmd::bundled_compiler()
+        .map(|p| p == path)
+        .unwrap_or(false);
+
     match cmd.output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -44,6 +50,7 @@ pub fn get_compiler_info() -> CompilerInfo {
                 path: path.display().to_string(),
                 version,
                 found: output.status.success(),
+                bundled,
                 platform: platform_name().to_string(),
             }
         }
@@ -51,6 +58,7 @@ pub fn get_compiler_info() -> CompilerInfo {
             path: path.display().to_string(),
             version: String::new(),
             found: false,
+            bundled,
             platform: platform_name().to_string(),
         },
     }

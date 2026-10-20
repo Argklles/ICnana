@@ -32,7 +32,20 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/testlib/*"
-    ]
+      "resources/testlib/*",
+      "resources/toolchain/**/*"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "g++"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "gcc-c++"
+        ]
+      }
+    }
   }
 }

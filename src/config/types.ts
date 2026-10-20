@@ -67,5 +67,7 @@ export interface CompilerInfo {
   path: string;
   version: string;
   found: boolean;
+  /** true = 用的是随安装包分发的内置工具链 */
+  bundled: boolean;
   platform: string;
 }

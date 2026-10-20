@@ -81,6 +81,37 @@ jobs:
       - name: 安装前端依赖
         run: npm install
 
+      - name: 下载并内置 MinGW 工具链（GCC 15）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # 固定 GCC 15 系列：选手常用版本的同一档，且与洛谷（GCC 15.3）接近
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/brechtsanders/winlibs_mingw/releases?per_page=40"
+          $release = $releases | Where-Object { $_.tag_name -match '^15\.' } | Select-Object -First 1
+          if (-not $release) { throw "没有找到 GCC 15 系列的 winlibs 发布" }
+
+          $asset = $release.assets | Where-Object {
+              $_.name -match 'x86_64.*posix.*ucrt.*\.7z$' -and $_.name -notmatch 'llvm'
+          } | Select-Object -First 1
+          if (-not $asset) { throw "没有找到合适的 7z 资产（x86_64 / posix / ucrt / 不含 LLVM）" }
+
+          Write-Host "下载 $($asset.name)（$([math]::Round($asset.size/1MB)) MB）"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile toolchain.7z
+
+          7z x toolchain.7z -o"toolchain-tmp" -y | Out-Null
+          $root = Get-ChildItem toolchain-tmp -Directory | Select-Object -First 1
+
+          New-Item -ItemType Directory -Force -Path "src-tauri/resources/toolchain" | Out-Null
+          Copy-Item "$($root.FullName)\*" "src-tauri/resources/toolchain" -Recurse -Force
+
+          # 精简：调试器和文档对刷题没用
+          Remove-Item "src-tauri/resources/toolchain\share" -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem "src-tauri/resources/toolchain\bin" -Filter "*gdb*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          $mb = (Get-ChildItem "src-tauri/resources/toolchain" -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
+          Write-Host ("工具链体积: {0:N1} MB" -f $mb)
+
       - name: 打包 Windows（msi + nsis）
         run: npm run tauri build -- --bundles msi,nsis
 

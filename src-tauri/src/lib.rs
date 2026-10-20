@@ -11,6 +11,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── 资源目录：打包后资源不在 exe 旁边，交给 Tauri 解析 ──
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                compiler::hidden_cmd::init_resource_dir(resource_dir);
+            }
+
             // ── 数据目录：固定到系统的 app data，不再依赖启动时的 cwd ──
             let data_root = app
                 .path()

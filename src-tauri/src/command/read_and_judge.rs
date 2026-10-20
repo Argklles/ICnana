@@ -54,6 +54,8 @@ pub async fn judge_all(
         .map(|q| limits_from_question(&q))
         .unwrap_or((DEFAULT_TIME_LIMIT, DEFAULT_MEMORY_LIMIT));
 
+    println!("⚖️ 评测限制: {} ms / {} MB", time_limit, memory_limit);
+
     let src = ic_fs::workspace_cpp(&filename);
     let bin_name = filename.trim_end_matches(".cpp").to_string();
     let bin = ic_fs::workspace_bin(&bin_name);
@@ -68,8 +70,10 @@ pub async fn judge_all(
 
     for case in &mut cases {
         match run_binary(&bin, &case.input, time_limit, memory_limit) {
-            Ok(actual_out) => {
+            Ok((actual_out, elapsed_ms, peak_kb)) => {
                 case.actual = actual_out.clone();
+                case.time_ms = Some(elapsed_ms);
+                case.memory_kb = peak_kb;
                 // 验证实际输出和期望输出是否一致
                 if actual_out == case.output.trim() {
                     case.status = "ac".to_string();
@@ -80,6 +84,8 @@ pub async fn judge_all(
             Err(run_err) => {
                 // 超时 / 超内存单独标出来，红字和普通报错区分开
                 case.status = if run_err.starts_with("TLE") {
+                    // 跑满限制被杀，耗时就是限制本身
+                    case.time_ms = Some(time_limit);
                     "tle".to_string()
                 } else if run_err.starts_with("MLE") {
                     "mle".to_string()

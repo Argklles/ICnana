@@ -60,6 +60,8 @@ pub fn process_cc_payload(payload: CCPayload) -> Result<String, String> {
             output: cc_test.output,
             actual: String::new(),         // 初始实际输出为空
             status: "Pending".to_string(), // 初始状态设为待评测
+            time_ms: None,
+            memory_kb: None,
         }
     }).collect();
 

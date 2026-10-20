@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "icnana"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "axum",
  "reqwest 0.11.27",

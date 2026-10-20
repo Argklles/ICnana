@@ -68,7 +68,7 @@ pub fn run_binary(
     input: &str,
     time_limit_ms: u64,
     memory_limit_mb: u64,
-) -> Result<String, String> {
+) -> Result<(String, u64, Option<u64>), String> {
     let mut child = create_hidden_command(bin.to_str().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -128,7 +128,10 @@ pub fn run_binary(
                 if start_time.elapsed() > timeout_duration {
                     // 发现死循环或超时，直接无情击杀！
                     let _ = child.kill(); 
-                    return Err("TLE (Time Limit Exceeded): 运行超时或死循环喵！".to_string());
+                    return Err(format!(
+                        "TLE (Time Limit Exceeded): 超过 {} ms",
+                        timeout_duration.as_millis()
+                    ));
                 }
                 // 让当前线程歇一口气，避免把你的 CPU 单核跑满 100%
                 thread::sleep(Duration::from_millis(10));
@@ -138,8 +141,16 @@ pub fn run_binary(
     }
 
     // 4. 程序正常结束（在规定时间内），去通道里把抽水机抽好的真实输出拿出来
+    let elapsed_ms = start_time.elapsed().as_millis() as u64;
     let actual_output = rx.recv().unwrap_or_default();
-    Ok(actual_output.trim().to_string())
+
+    #[cfg(windows)]
+    let peak_kb = win_mem::peak_working_set_bytes(pid).map(|b| b / 1024);
+
+    #[cfg(not(windows))]
+    let peak_kb: Option<u64> = None;
+
+    Ok((actual_output.trim().to_string(), elapsed_ms, peak_kb))
 }
 
 /// Windows 专用：查询进程的工作集大小。
@@ -183,7 +194,15 @@ mod win_mem {
     // PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
     const ACCESS: u32 = 0x0400 | 0x0010;
 
+    pub fn peak_working_set_bytes(pid: u32) -> Option<u64> {
+        counters(pid).map(|c| c.peak_working_set_size as u64)
+    }
+
     pub fn working_set_bytes(pid: u32) -> Option<u64> {
+        counters(pid).map(|c| c.working_set_size as u64)
+    }
+
+    fn counters(pid: u32) -> Option<ProcessMemoryCounters> {
         unsafe {
             let handle = OpenProcess(ACCESS, 0, pid);
             if handle.is_null() {
@@ -199,7 +218,7 @@ mod win_mem {
             if ok == 0 {
                 None
             } else {
-                Some(counters.working_set_size as u64)
+                Some(counters)
             }
         }
     }
@@ -226,7 +245,22 @@ mod tests {
             "sum",
             "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b;return 0;}",
         );
-        assert_eq!(run_binary(&bin, "1 2", 2000, 256).unwrap(), "3");
+        let (out, elapsed_ms, _) = run_binary(&bin, "1 2", 2000, 256).unwrap();
+        assert_eq!(out, "3");
+        assert!(elapsed_ms < 2000, "正常程序不该超过限制，实测 {elapsed_ms} ms");
+    }
+
+    #[test]
+    fn optimized_empty_loop_is_not_tle() {
+        // 用户报告的场景：2e7 次空循环，-O2 会整个优化掉，不该判超时
+        let (_, bin) = build(
+            "busy_empty",
+            "#include <bits/stdc++.h>\nint main(){std::ios::sync_with_stdio(false);std::cin.tie(nullptr);\nlong long n=20000000;for(int i=0;i<n;i++){}return 0;}",
+        );
+        let (out, elapsed_ms, _) = run_binary(&bin, "2 0 0", 3000, 256)
+            .expect("这个程序不该超时");
+        assert_eq!(out, "");
+        assert!(elapsed_ms < 1000, "空循环应该几毫秒跑完，实测 {elapsed_ms} ms");
     }
 
     #[test]

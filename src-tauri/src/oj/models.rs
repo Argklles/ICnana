@@ -1,13 +1,43 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TestCase {
     pub input: String,
     pub output: String,
     pub actual: String,
     pub status: String,
+    /// 这一轮运行耗时（毫秒），没跑过就是 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_ms: Option<u64>,
+    /// 这一轮运行的峰值内存（KB），目前只有 Windows 能拿到
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_kb: Option<u64>,
 }
-//打包数据（输入输出，测评状态，代码输出）用的结构体
+//打包数据（输入输出，测评状态，代码输出）用的结构体；
+//注意字段要和前端对齐，所以统一走 camelCase（time_ms → timeMs）
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn testcase_uses_camel_case_and_skips_empty_metrics() {
+        let tc = TestCase {
+            input: "1".into(),
+            output: "2".into(),
+            actual: "2".into(),
+            status: "ac".into(),
+            time_ms: Some(12),
+            memory_kb: None,
+        };
+        let json = serde_json::to_string(&tc).unwrap();
+
+        assert!(json.contains("\"timeMs\":12"), "前端读不到，实际: {json}");
+        assert!(!json.contains("time_ms"), "不该出现下划线写法: {json}");
+        assert!(!json.contains("memory_kb"), "None 的字段不该序列化: {json}");
+    }
+}
 
 
 /*

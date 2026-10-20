@@ -60,9 +60,29 @@ export default function TestPanel({ testCases, setTestCases, width, onRunAll }: 
           
           {/* 单个用例的 Header */}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", color: "#888" }}>Case #{index + 1}</span>
+            <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Case #{index + 1}</span>
+
+            <span style={{
+              fontSize: 11,
+              color: "var(--text-faint)",
+              fontVariantNumeric: "tabular-nums",
+              marginLeft: "auto",
+              marginRight: 12,
+            }}>
+              {typeof tc.timeMs === "number" ? tc.timeMs : -1} ms
+              {" · "}
+              {typeof tc.memoryKb === "number" ? `${(tc.memoryKb / 1024).toFixed(1)} MB` : "-1 MB"}
+            </span>
+
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <b style={{ fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#888" }}>
+              <b style={{
+                fontSize: "12px",
+                color: tc.status === "ac" ? "#5fd89a"
+                  : tc.status === "wa" ? "#f87171"
+                  : tc.status === "tle" ? "#f0b72f"
+                  : tc.status === "mle" ? "#c98bdb"
+                  : "#888",
+              }}>
                 {tc.status.toUpperCase()}
               </b>
               <button

@@ -104,12 +104,17 @@ export default function EditorArea({
     return () => window.removeEventListener("keydown", handler, true);
   }, [tabShortcut, viewMode]);
 
-  // 配色修改后重新注册主题并刷新生效（Monaco 不会自动感知 defineTheme 的变化）
+  // 配色 / 主题注册：beforeMount 只跑一次，用 ref 保证拿到的是最新颜色
+  const tokenColorsRef = useRef(tokenColors);
+  tokenColorsRef.current = tokenColors;
+
+  // 改配色、切主题、甚至切文件时都重新注册并应用一次
+  // （Monaco 不会自动感知 defineTheme 的变化，切文件时也可能拿旧主题重绘）
   useEffect(() => {
     if (!monaco) return;
-    defineEditorTheme(monaco, tokenColors);
+    defineEditorTheme(monaco, tokenColorsRef.current);
     monaco.editor.setTheme(`icnana-${codeTheme}`);
-  }, [monaco, codeTheme, tokenColors]);
+  }, [monaco, codeTheme, tokenColors, activeFile]);
 
   // 切到交互/通信题时自动落在交互器标签页
   useEffect(() => {
@@ -327,7 +332,7 @@ export default function EditorArea({
                 path="main.cpp"
                 defaultLanguage="cpp"
                 theme={`icnana-${codeTheme}`}
-                beforeMount={(m) => defineEditorTheme(m, tokenColors)}
+                beforeMount={(m) => defineEditorTheme(m, tokenColorsRef.current)}
                 value={code}
                 onChange={v => setCode(v || "")}
                 onMount={editor => { codeModelRef.current = editor.getModel(); }}
@@ -363,6 +368,7 @@ export default function EditorArea({
                 testCases={testCases}
                 compileSettings={compileSettings}
                 terminalColors={terminalColors}
+                editorTheme={`icnana-${codeTheme}`}
               />
             </div>
         </div>

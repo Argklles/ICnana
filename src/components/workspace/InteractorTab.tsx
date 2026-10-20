@@ -10,6 +10,8 @@ import { useTauriEvent } from "../../hooks/useTauriEvent";
  * 状态全部收在这里，外面只需要 activeFile / code / 编译设置这些“输入”。
  */
 interface InteractorTabProps {
+  /** 和主编辑器共用同一套配色 */
+  editorTheme: string;
   /** 控制台配色：输入 / 输出 / 系统提示 */
   terminalColors: { input: string; output: string; system: string };
   activeFile: string;
@@ -28,6 +30,7 @@ export default function InteractorTab({
   testCases,
   compileSettings,
   terminalColors,
+  editorTheme,
 }: InteractorTabProps) {
   type InteractiveResult = { status: string; message: string; transcript: string };
   const [interactorCode, setInteractorCode] = useState<string>("");
@@ -245,7 +248,7 @@ export default function InteractorTab({
                     height="100%"
                     path="interactor.cpp"
                     defaultLanguage="cpp"
-                    theme="vs-dark"
+                    theme={editorTheme}
                     value={interactorCode}
                     onChange={v => setInteractorCode(v || "")}
                     options={{ fontSize: 14, minimap: { enabled: false }, automaticLayout: true, tabSize: indentSize, insertSpaces: true, padding: { top: 10 } }}

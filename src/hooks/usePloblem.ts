@@ -21,7 +21,7 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles, ref
 
   // 2️⃣ 监听「有新题目」事件（useTauriEvent 内部处理了 StrictMode 的重复订阅）
   useTauriEvent<string>("oj_problem_received", (stem) => {
-    console.log("🎉 插件发来新题目了喵！等待用户决定:", stem);
+    console.debug("[cc] 收到新题目:", stem);
     setIncomingProblem(stem); // 触发弹窗
   });
 
@@ -51,7 +51,7 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles, ref
 
     try {
       await invoke("load_workspace_file", { filename: activeFile });
-      console.log(`准备把 ${stem} 的样例偷进 ${activeFile} 喵...`);
+      console.debug(`[cc] 合并 ${stem} 到 ${activeFile}`);
 
       const newCases = await invoke<TestCase[]>("load_test_cases", { filename: stem });
       setTestCases(newCases);
@@ -62,7 +62,7 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles, ref
       });
 
       await invoke("delete_workspace_file", { filename: stem });
-      console.log("🎉 成功将样例偷入当前页面，现场已清理！");
+      console.debug("[cc] 合并完成");
     } catch (e) {
       console.error("合并样例失败了喵:", e);
       const updatedFiles = await invoke<WorkspaceFile[]>("list_workspace_files");

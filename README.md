@@ -28,13 +28,22 @@
 ## 须知
 Windows 安装包已经内置 GCC（MinGW 15），装完即用；Linux / macOS 仍然依赖系统里的 `g++`（deb / rpm 包会声明依赖，装包时自动带上）。
 
-题目、样例、收藏夹都存在系统的应用数据目录里，不在安装目录：
-- Windows：`%APPDATA%\com.icnana\workspace`
-- Linux：`~/.local/share/com.icnana/workspace`
-- macOS：`~/Library/Application Support/com.icnana/workspace`
+题目、样例、收藏夹放在哪，取决于安装目录能不能写：
 
-设置页的「存储」一栏会直接显示当前路径，换机器时备份这个文件夹就行。
-老版本留在启动目录旁边的 `../workspace` 会在第一次启动时自动迁移过来。
+- **装到可写目录**（安装时自己选的、或解压版）→ 数据就在程序旁边：
+  ```
+  icnana/
+    ├── icnana.exe
+    ├── workspace/     ← 题目、样例、收藏夹
+    └── toolchain/     ← 首启解压出来的 GCC
+  ```
+  整个文件夹拷到别的电脑就能接着用。
+- **装到只读目录**（`Program Files`、`/usr/lib`）→ 回落到系统数据目录：
+  - Windows：`%APPDATA%\com.icnana\workspace`
+  - Linux：`~/.local/share/com.icnana/workspace`
+  - macOS：`~/Library/Application Support/com.icnana/workspace`
+
+设置页的「存储」一栏会直接显示当前实际路径。老版本丢在启动目录旁边 `../workspace` 的数据，第一次升级时会自动迁移过来。
 
 
 ## 搭配 Competitive Companion 使用（这个插件是必要的）

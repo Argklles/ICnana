@@ -1,5 +1,6 @@
 import { Appearance, ThemePreset } from "../../config/types";
 import { BUILTIN_PRESETS, GLASS_PRESETS } from "../../config/constants";
+import { ColorSwatches, SliderRow, Switch, groupTitleStyle, hintStyle, labelStyle } from "./ui";
 
 /**
  * 外观设置面板。
@@ -22,74 +23,7 @@ interface AppearanceSettingsProps {
   onApplyPreset: (preset: ThemePreset) => void;
 }
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "rgba(255,255,255,0.72)",
-  width: 132,
-  flexShrink: 0,
-};
-
-const groupTitleStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#a9c7ff",
-  letterSpacing: 1.2,
-  margin: "18px 0 10px",
-  paddingBottom: 6,
-  borderBottom: "1px solid rgba(255,255,255,0.10)",
-};
-
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "rgba(255,255,255,0.45)",
-  marginTop: 2,
-};
-
-const badgeStyle: React.CSSProperties = {
-  width: 46,
-  flexShrink: 0,
-  textAlign: "right",
-  fontSize: 11,
-  color: "rgba(255,255,255,0.62)",
-  fontVariantNumeric: "tabular-nums",
-};
-
 const CORNER_NAMES = ["左上角", "右上角", "右下角", "左下角"];
-
-/** 小开关（模仿 DSH 那种胶囊拨杆） */
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      style={{
-        width: 38,
-        height: 20,
-        borderRadius: 999,
-        border: "none",
-        cursor: "pointer",
-        position: "relative",
-        padding: 0,
-        background: checked
-          ? "linear-gradient(135deg, var(--accent-blue), var(--accent-pink))"
-          : "rgba(255, 255, 255, 0.18)",
-        transition: "background 0.15s",
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: checked ? 20 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left 0.15s",
-        }}
-      />
-    </button>
-  );
-}
 
 export default function AppearanceSettings({
   value,
@@ -113,26 +47,15 @@ export default function AppearanceSettings({
     suffix: string,
     toValue: (v: number) => Partial<Appearance>,
   ) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-      <span style={labelStyle}>{label}</span>
-      <div className="range-wrap">
-        <div className="range-track" />
-        <div
-          className="range-fill"
-          style={{ width: `${((current - min) / (max - min)) * 100}%` }}
-        />
-        <input
-          className="range"
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={current}
-          onChange={(e) => patch(toValue(Number(e.target.value)))}
-        />
-      </div>
-      <span style={badgeStyle}>{current}{suffix}</span>
-    </div>
+    <SliderRow
+      label={label}
+      value={current}
+      min={min}
+      max={max}
+      step={step}
+      suffix={suffix}
+      onChange={(v) => patch(toValue(v))}
+    />
   );
 
   const radiusButtons = (side: "left" | "right") => {
@@ -296,33 +219,7 @@ export default function AppearanceSettings({
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <span style={labelStyle}>{value.glassGradient ? "渐变起点" : "玻璃颜色"}</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          {GLASS_PRESETS.map((c) => (
-            <button
-              key={c}
-              onClick={() => patch({ glassColor: c })}
-              title={c}
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                cursor: "pointer",
-                background: c,
-                border:
-                  value.glassColor.toLowerCase() === c.toLowerCase()
-                    ? "2px solid #fff"
-                    : "1px solid rgba(255,255,255,0.25)",
-              }}
-            />
-          ))}
-          <input
-            type="color"
-            value={value.glassColor}
-            onChange={(e) => patch({ glassColor: e.target.value })}
-            title="自定义颜色"
-            style={{ width: 32, height: 24, background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 6, padding: 1, cursor: "pointer" }}
-          />
-        </div>
+        <ColorSwatches value={value.glassColor} onChange={(c) => patch({ glassColor: c })} presets={GLASS_PRESETS} />
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -384,32 +281,7 @@ export default function AppearanceSettings({
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <span style={labelStyle}>标题栏颜色</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {GLASS_PRESETS.map((c) => (
-            <button
-              key={c}
-              onClick={() => patch({ titlebarColor: c })}
-              title={c}
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                cursor: "pointer",
-                background: c,
-                border:
-                  value.titlebarColor.toLowerCase() === c.toLowerCase()
-                    ? "2px solid #fff"
-                    : "1px solid rgba(255,255,255,0.25)",
-              }}
-            />
-          ))}
-          <input
-            type="color"
-            value={value.titlebarColor}
-            onChange={(e) => patch({ titlebarColor: e.target.value })}
-            style={{ width: 32, height: 24, background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 6, padding: 1, cursor: "pointer" }}
-          />
-        </div>
+        <ColorSwatches value={value.titlebarColor} onChange={(c) => patch({ titlebarColor: c })} presets={GLASS_PRESETS} />
       </div>
 
       {slider("标题栏不透明度", Math.round(value.titlebarAlpha * 100), 0, 100, 1, "%", (v) => ({ titlebarAlpha: v / 100 }))}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
@@ -14,12 +14,15 @@ import { useProblem } from "./hooks/usePloblem"; // 沿用你的文件名
 import FileSidebar from "./components/workspace/FileSildbar";
 import TitleBar from "./components/layout/TitleBar";
 import { useTauriEvent } from "./hooks/useTauriEvent";
+import { usePanelResize } from "./hooks/usePanelResize";
+import ProblemArrivalModal from "./components/ProblemArrivalModal";
 import EditorArea from "./components/workspace/EditorArea";
 import TestPanel from "./components/workspace/TestPanel";
 import SettingsPanel from "./components/settings/SettingsPanel";
 
 export default function App() {
   // ── 全局布局状态 ──
+  // 现在只有 IDE 一个工作区；保留 activeTab 是为了以后加回浏览器/其它视图
   const [activeTab, setActiveTab] = useState<TabType>("code");
 
   // ── 激活 Hooks 拿到所有数据和方法 ──
@@ -27,6 +30,8 @@ export default function App() {
   const setting = useSetting();
   
   // 题目接收处理器，需要用到 workspace 的部分能力
+  const { fileSidebarWidth, testPanelWidth, startDragFiles, startDragTest } = usePanelResize();
+
   const problemHandler = useProblem({
     activeFile: workspace.activeFile,
     switchFile: workspace.switchFile,
@@ -57,31 +62,6 @@ export default function App() {
       if (payload.stage === "ready") refreshCompiler();
     }
   });
-
-  // ── 面板宽度（可拖动布局） ──
-  const [fileSidebarWidth, setFileSidebarWidth] = useState(160);
-  const [testPanelWidth, setTestPanelWidth] = useState(380);
-  const draggingFiles = useRef(false);
-  const draggingTest  = useRef(false);
-  const dragStartX    = useRef(0);
-  const dragStartW    = useRef(0);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const dx = e.clientX - dragStartX.current;
-      if (draggingFiles.current) setFileSidebarWidth(Math.max(100, Math.min(320, dragStartW.current + dx)));
-      if (draggingTest.current) setTestPanelWidth(Math.max(200, Math.min(600, dragStartW.current - dx)));
-    };
-    const onUp = () => { 
-      draggingFiles.current = false; 
-      draggingTest.current = false; 
-      document.body.style.cursor = ""; 
-      document.body.style.userSelect = ""; 
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "transparent", color: "var(--text)", overflow: "hidden" }}>
@@ -136,8 +116,9 @@ export default function App() {
         {/* 压暗层：壁纸之上、所有面板之下 */}
         <div className="content-scrim" />
 
-        {/* ── 💻 代码实验室 (受 activeTab 控制) ── */}
-        <div style={{ display: "flex", width: "100%", height: "100%", position: "absolute", visibility: activeTab === "code" ? "visible" : "hidden", zIndex: activeTab === "code" ? 10 : 0 }}>
+        {/* ── 代码实验室 ── */}
+        {/* z-index 必须高于 .content-scrim，否则压暗层会盖在面板上 */}
+        <div style={{ display: "flex", width: "100%", height: "100%", position: "relative", zIndex: 2 }}>
           
           {/* 左侧：文件树组件 */}
           <FileSidebar 
@@ -152,7 +133,7 @@ export default function App() {
             width={fileSidebarWidth} codeTemplate={setting.codeTemplate}
           />
 
-          <div className="resize-divider" onMouseDown={e => { draggingFiles.current = true; dragStartX.current = e.clientX; dragStartW.current = fileSidebarWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
+          <div className="resize-divider" onMouseDown={startDragFiles} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
 
           {/* 中间：编辑器与题面组件 */}
           <EditorArea 
@@ -167,7 +148,7 @@ export default function App() {
             terminalColors={setting.terminalColors}
           />
 
-          <div className="resize-divider" onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
+          <div className="resize-divider" onMouseDown={startDragTest} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
 
           {/* 右侧：测试用例面板组件 */}
           <TestPanel 
@@ -176,60 +157,20 @@ export default function App() {
           />
         </div>
 
-        {/* ── 🌐 OJ 浏览器组件 (受 activeTab 控制) ──
-        <BrowserView 
-          isActive={activeTab === "browser"} ojUrl={browser.ojUrl} setOjUrl={browser.setOjUrl}
-          browserHistory={browser.browserHistory} clearHistory={browser.clearHistory}
-        /> */}
       </div>
 
-      {/* 🟢 新题目接收弹窗 (接入 problemHandler) */}
       {problemHandler.incomingProblem && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 9999 }}>
-          <div style={{ background: "rgba(30,30,35,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", padding: "24px", borderRadius: "12px", width: "400px", color: "#fff" }}>
-            <h3 style={{ marginTop: 0, marginBottom: "8px", fontSize: "18px" }}>✨ 接收到新题目数据</h3>
-            <p style={{ color: "rgba(255,255,255,0.7)", marginBottom: "20px", wordBreak: "break-all" }}>{problemHandler.incomingProblem}</p>
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button onClick={() => problemHandler.handleIgnore(problemHandler.incomingProblem!)} style={{ background: "transparent", color: "#aaa", border: "none", cursor: "pointer", padding: "8px 16px" }}>忽略</button>
-              <button onClick={() => problemHandler.handleMergeToCurrent(problemHandler.incomingProblem!)} style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "6px", cursor: "pointer", padding: "8px 16px" }}>导入当前页</button>
-              <button onClick={() => problemHandler.handleOpenNewPage(problemHandler.incomingProblem!)} style={{ background: "#4caf50", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", padding: "8px 16px", fontWeight: "bold" }}>新开代码页</button>
-            </div>
-          </div>
-        </div>
+        <ProblemArrivalModal
+          stem={problemHandler.incomingProblem}
+          onIgnore={problemHandler.handleIgnore}
+          onMerge={problemHandler.handleMergeToCurrent}
+          onOpenNew={problemHandler.handleOpenNewPage}
+        />
       )}
 
       {/* ⚙️ 设置面板（编译环境 / 编辑器） */}
       {setting.showSettings && (
-        <SettingsPanel
-          onClose={() => setting.setShowSettings(false)}
-          onSave={setting.saveSettings}
-          onReset={setting.resetSettings}
-          editingTemplate={setting.editingTemplate}
-          setEditingTemplate={setting.setEditingTemplate}
-          editingIndent={setting.editingIndent}
-          setEditingIndent={setting.setEditingIndent}
-          editingCompile={setting.editingCompile}
-          setEditingCompile={setting.setEditingCompile}
-          editingShortcut={setting.editingShortcut}
-          setEditingShortcut={setting.setEditingShortcut}
-          editingAppearance={setting.editingAppearance}
-          setEditingAppearance={setting.setEditingAppearance}
-          appearanceError={setting.appearanceError}
-          presets={setting.presets}
-          onSavePreset={setting.savePreset}
-          onDeletePreset={setting.deletePreset}
-          onApplyPreset={setting.applyPreset}
-          useSystemTitleBar={setting.useSystemTitleBar}
-          setUseSystemTitleBar={setting.setUseSystemTitleBar}
-          codeTheme={setting.codeTheme}
-          setCodeTheme={setting.updateCodeTheme}
-          codeShadow={setting.codeShadow}
-          setCodeShadow={setting.updateCodeShadow}
-          tokenColors={setting.tokenColors}
-          setTokenColor={setting.updateTokenColor}
-          terminalColors={setting.terminalColors}
-          setTerminalColor={setting.updateTerminalColor}
-        />
+        <SettingsPanel settings={setting} />
       )}
     </div>
   );

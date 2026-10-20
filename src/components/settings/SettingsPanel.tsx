@@ -1,42 +1,20 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Appearance, CompileSettings, CompilerInfo, ThemePreset } from "../../config/types";
+import { CompileSettings, CompilerInfo } from "../../config/types";
 import AppearanceSettings from "./AppearanceSettings";
-import { CODE_THEME_CHOICES, CodeTheme } from "../../config/constants";
+import { CODE_THEME_CHOICES } from "../../config/constants";
 import { TOKEN_KEYS, presetColor } from "../../config/codeThemes";
+import type { useSetting } from "../../hooks/useSetting";
+import { fieldStyle, hintStyle, labelStyle, rowStyle, selectStyle } from "./ui";
 import { OPT_CHOICES, STD_CHOICES, TAB_SHORTCUTS } from "../../config/constants";
 import type { TabShortcut } from "../../config/constants";
 
+type SettingsBundle = ReturnType<typeof useSetting>;
+
 interface SettingsPanelProps {
-  onClose: () => void;
-  onSave: () => void;
-  onReset: () => void;
-  editingTemplate: string;
-  setEditingTemplate: (v: string) => void;
-  editingIndent: 2 | 4;
-  setEditingIndent: (v: 2 | 4) => void;
-  editingCompile: CompileSettings;
-  setEditingCompile: (v: CompileSettings) => void;
-  editingShortcut: TabShortcut;
-  setEditingShortcut: (v: TabShortcut) => void;
-  editingAppearance: Appearance;
-  setEditingAppearance: (v: Appearance) => void;
-  appearanceError?: string;
-  useSystemTitleBar: boolean;
-  setUseSystemTitleBar: (v: boolean) => void;
-  codeTheme: CodeTheme;
-  setCodeTheme: (v: CodeTheme) => void;
-  codeShadow: number;
-  setCodeShadow: (v: number) => void;
-  tokenColors: Record<string, string>;
-  setTokenColor: (token: string, color: string) => void;
-  terminalColors: { input: string; output: string; system: string };
-  setTerminalColor: (key: "input" | "output" | "system", color: string) => void;
-  presets: ThemePreset[];
-  onSavePreset: (name: string) => void;
-  onDeletePreset: (id: string) => void;
-  onApplyPreset: (preset: ThemePreset) => void;
+  /** 设置相关的全部状态与操作（useSetting 的返回值） */
+  settings: SettingsBundle;
 }
 
 const overlayStyle: CSSProperties = {
@@ -54,21 +32,7 @@ const panelStyle: CSSProperties = {
 };
 
 
-const labelStyle: CSSProperties = { fontSize: 12, color: "#8b949e", display: "block", marginBottom: 5 };
 
-const fieldStyle: CSSProperties = {
-  background: "#1b1b1f", color: "#d4d4d4", border: "1px solid #3a3a3a",
-  borderRadius: 5, padding: "7px 9px", fontSize: 13, width: "100%", boxSizing: "border-box",
-};
-
-const fieldStyle_withe: CSSProperties = {
-  background: "#1b1b1f", color: "#151414", border: "1px solid #3a3a3a",
-  borderRadius: 5, padding: "7px 9px", fontSize: 13, width: "100%", boxSizing: "border-box",
-};
-
-const hintStyle: CSSProperties = { fontSize: 11, color: "#6b7280", lineHeight: 1.6, marginTop: 8 };
-
-const rowStyle: CSSProperties = { display: "flex", gap: 12, marginBottom: 12 };
 
 const checkStyle: CSSProperties = {
   display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#b8c0cc", cursor: "pointer",
@@ -82,20 +46,29 @@ const footerBtn = (primary: boolean): CSSProperties => ({
   fontWeight: primary ? 700 : 400,
 });
 
-export default function SettingsPanel({
-  onClose, onSave, onReset,
-  editingTemplate, setEditingTemplate,
-  editingIndent, setEditingIndent,
-  editingCompile, setEditingCompile,
-  editingShortcut, setEditingShortcut,
-  editingAppearance, setEditingAppearance, appearanceError,
-  useSystemTitleBar, setUseSystemTitleBar,
-  codeTheme, setCodeTheme,
-  codeShadow, setCodeShadow,
-  tokenColors, setTokenColor,
-  terminalColors, setTerminalColor,
-  presets, onSavePreset, onDeletePreset, onApplyPreset,
-}: SettingsPanelProps) {
+export default function SettingsPanel({ settings }: SettingsPanelProps) {
+  const {
+    editingCompile, setEditingCompile,
+    editingAppearance, setEditingAppearance, appearanceError,
+    editingShortcut, setEditingShortcut,
+    editingTemplate, setEditingTemplate,
+    editingIndent, setEditingIndent,
+    useSystemTitleBar, setUseSystemTitleBar,
+    codeTheme, codeShadow,
+    tokenColors, terminalColors,
+    presets,
+  } = settings;
+
+  const onClose = () => settings.setShowSettings(false);
+  const onSave = settings.saveSettings;
+  const onReset = settings.resetSettings;
+  const setCodeTheme = settings.updateCodeTheme;
+  const setCodeShadow = settings.updateCodeShadow;
+  const setTokenColor = settings.updateTokenColor;
+  const setTerminalColor = settings.updateTerminalColor;
+  const onSavePreset = settings.savePreset;
+  const onDeletePreset = settings.deletePreset;
+  const onApplyPreset = settings.applyPreset;
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
   const [dataDir, setDataDir] = useState<string>("");
@@ -219,7 +192,7 @@ export default function SettingsPanel({
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>C++ 标准</label>
               <select
-                style={fieldStyle_withe}
+                style={selectStyle}
                 value={editingCompile.std}
                 onChange={(e) => patchCompile({ std: e.target.value })}
               >
@@ -229,7 +202,7 @@ export default function SettingsPanel({
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>优化等级</label>
               <select
-                style={fieldStyle_withe}
+                style={selectStyle}
                 value={editingCompile.opt}
                 onChange={(e) => patchCompile({ opt: e.target.value })}
               >
@@ -372,7 +345,7 @@ export default function SettingsPanel({
             <div style={{ width: 140 }}>
               <label style={labelStyle}>缩进</label>
               <select
-                style={fieldStyle_withe}
+                style={selectStyle}
                 value={editingIndent}
                 onChange={(e) => setEditingIndent(parseInt(e.target.value) as 2 | 4)}
               >
@@ -383,7 +356,7 @@ export default function SettingsPanel({
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>切换 代码 / 题面 / 交互器</label>
               <select
-                style={fieldStyle_withe}
+                style={selectStyle}
                 value={editingShortcut}
                 onChange={(e) => setEditingShortcut(e.target.value as TabShortcut)}
               >

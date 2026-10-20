@@ -195,6 +195,12 @@ pub fn save_code_template(template: String) -> Result<(), String> {
     fs::write(ic_fs::template_path(), template).map_err(|e| e.to_string())
 }
 
+/// 给设置页展示：当前工作区在磁盘上的哪个位置
+#[tauri::command]
+pub fn get_workspace_path() -> String {
+    ic_fs::workspace_dir().display().to_string()
+}
+
 /// 手动切换题目类型：normal / interactive / communication
 #[tauri::command]
 pub fn set_problem_type(stem: String, problem_type: String) -> Result<(), String> {

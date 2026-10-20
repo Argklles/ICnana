@@ -11,6 +11,24 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── 数据目录：固定到系统的 app data，不再依赖启动时的 cwd ──
+            let data_root = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from(".."));
+            let workspace = data_root.join("workspace");
+
+            if let Err(e) = std::fs::create_dir_all(&workspace) {
+                eprintln!("⚠️ 创建工作区目录失败: {e}（{}）", workspace.display());
+            }
+            utils::ic_fs::init_workspace_root(workspace.clone());
+            println!("📂 工作区目录: {}", workspace.display());
+
+            // 老版本把数据放在 cwd 旁边的 ../workspace，第一次升级时搬过来
+            if let Some(count) = utils::ic_fs::migrate_legacy_workspace(&workspace) {
+                println!("📦 已从旧目录迁移 {count} 个题目文件夹");
+            }
+
             app.manage(command::manual_interaction::InteractionState::default());
             let app_handle = app.handle().clone();
             let state = command::companion::AppState { app_handle };
@@ -48,6 +66,7 @@ pub fn run() {
             command::workspace::rename_workspace_file,
             command::workspace::save_code_template,
             command::workspace::set_problem_type,
+            command::workspace::get_workspace_path,
 
             command::collections::list_collections,
             command::collections::create_collection,

@@ -70,12 +70,17 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
+  const [dataDir, setDataDir] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
     invoke<CompilerInfo>("get_compiler_info")
       .then((info) => { if (alive) setCompiler(info); })
       .catch(() => { if (alive) setProbeFailed(true); });
+    invoke<string>("get_workspace_path")
+      .then((dir) => { if (alive) setDataDir(dir); })
+      .catch(() => { if (alive) setDataDir("读取失败"); });
+
     return () => { alive = false; };
   }, []);
 
@@ -170,6 +175,18 @@ export default function SettingsPanel({
             <br />
             Windows 与 Linux 判题机的 <code>long</code> 宽度不同（4 字节 vs 8 字节），涉及 <code>%ld</code> 的代码本地行为不一定等于线上。
           </div>
+        </div>
+
+        {/* ── 存储 ── */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={sectionTitle}>存储</div>
+          <div style={{
+            background: "#1b1b1f", border: "1px solid #2f2f35", borderRadius: 6,
+            padding: "8px 10px", fontSize: 11, color: "#8b949e", wordBreak: "break-all", lineHeight: 1.6,
+          }}>
+            {dataDir || "读取中…"}
+          </div>
+          <div style={hintStyle}>题目、样例、收藏夹都在这里；换机器时备份这个目录即可。</div>
         </div>
 
         {/* ── 编辑器 ── */}

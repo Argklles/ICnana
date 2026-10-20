@@ -17,13 +17,64 @@ int main() {
 import { CompileSettings, Favorite } from "./types";
 
 // ── 编译环境默认值 ────────────────────────────────────────
-// c++14 对齐洛谷默认语言与 NOI Linux 2.0；O2 对齐评测机；静态链接避免缺 DLL。
+// c++17 是现在的主流档位；O2 对齐评测机；静态链接避免缺 DLL。
 export const DEFAULT_COMPILE_SETTINGS: CompileSettings = {
-  std: "c++14",
+  std: "c++17",
   opt: "O2",
   staticLink: true,
   marchNative: false,
 };
+
+// 默认外观
+export const DEFAULT_APPEARANCE = {
+  bgImage: "",
+  bgOpacity: 1,
+  baseGradient: false,
+  scrim: 0.28,
+  glassColor: "#0d0d14",
+  glassGradient: false,
+  glassColor2: "#f78fb3",
+  glassAlpha: 0.60,
+  glassBlur: 12,
+  glassFidelity: 0.55,
+  radius: 10,
+  /* 顺序：左上 右上 右下 左下，true = 直角 */
+  // 左侧栏贴窗口左边，默认左上/左下是直角；右侧栏同理
+  leftSquare: [true, false, false, true],
+  rightSquare: [false, true, true, false],
+  titlebarAlpha: 0.35,
+  titlebarColor: "#0d0d14",
+  titlebarBlur: 12,
+  blue: "#6ea8fe",
+  pink: "#f78fb3",
+};
+
+/** 内置预设：纯黑无背景 */
+export const BUILTIN_PRESETS = [
+  { id: "default", name: "默认（纯黑）", builtin: true, appearance: DEFAULT_APPEARANCE },
+];
+
+/** 代码配色方案 */
+export type CodeTheme = "contrast" | "soft" | "mono";
+export const CODE_THEME_CHOICES: { key: CodeTheme; label: string }[] = [
+  { key: "contrast", label: "高对比" },
+  { key: "soft", label: "柔和" },
+  { key: "mono", label: "单色" },
+];
+export const DEFAULT_CODE_THEME: CodeTheme = "contrast";
+/** 代码文字描边强度 0–1，壁纸越花越需要 */
+export const DEFAULT_CODE_SHADOW = 0.75;
+
+/** 终端（手动对答控制台）配色：输入 / 输出 / 系统提示 */
+export const DEFAULT_TERMINAL_COLORS = {
+  input: "#8fd9ff",
+  output: "#e8eef7",
+  system: "#9aa0b4",
+};
+export type TerminalColors = typeof DEFAULT_TERMINAL_COLORS;
+
+/** 玻璃颜色的预设色板 */
+export const GLASS_PRESETS = ["#ffffff", "#0a0a12", "#4dd0e1", "#f78fb3", "#ffb74d", "#ef5350"];
 
 // 切换 代码/题面/交互器 的快捷键预设
 export const TAB_SHORTCUTS = [

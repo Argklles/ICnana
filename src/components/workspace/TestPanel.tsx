@@ -6,9 +6,11 @@ interface TestPanelProps {
   testCases: any[]; // 替换为 TestCase[]
   setTestCases: React.Dispatch<React.SetStateAction<any[]>>; // 替换为 TestCase[]
   width: number;
+  /** 跑一遍全部样例（逻辑在 useWorkspace 里） */
+  onRunAll: () => void | Promise<void>;
 }
 
-export default function TestPanel({ testCases, setTestCases, width }: TestPanelProps) {
+export default function TestPanel({ testCases, setTestCases, width, onRunAll }: TestPanelProps) {
   
   // 增加新用例
   const handleAddCase = () => {
@@ -32,22 +34,29 @@ export default function TestPanel({ testCases, setTestCases, width }: TestPanelP
   };
 
   return (
-    <div style={{ width: `${width}px`, background: "#252526", padding: "10px", overflowY: "auto", flexShrink: 0 }}>
+    <div className="glass-panel panel-right" style={{ width: `${width}px`, padding: "10px", overflowY: "auto", flexShrink: 0 }}>
       
-      {/* 头部：标题与添加按钮 */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px", alignItems: "center" }}>
-        <strong style={{ color: "#fff", fontSize: "16px" }}>测试用例</strong>
-        <button 
-          onClick={handleAddCase} 
-          style={{ padding: "4px 8px", background: "#444", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+      {/* 头部：标题 · 运行 · 添加 */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px", alignItems: "center", gap: "8px" }}>
+        <strong style={{ color: "var(--text)", fontSize: "15px", flexShrink: 0 }}>测试用例</strong>
+
+        <button
+          className="ghost-btn"
+          onClick={() => onRunAll()}
+          title="运行全部样例"
+          style={{ flex: 1, color: "var(--accent-blue)", borderColor: "rgba(110, 168, 254, 0.45)", fontWeight: 600 }}
         >
-          ➕ 添加
+          ▶ 运行
+        </button>
+
+        <button className="ghost-btn" onClick={handleAddCase} style={{ flexShrink: 0 }}>
+          + 添加
         </button>
       </div>
 
       {/* 列表渲染 */}
       {testCases.map((tc, index) => (
-        <div key={index} style={{ background: "#333", padding: "10px", marginBottom: "10px", borderRadius: "4px", borderLeft: tc.status === "ac" ? "4px solid #40b864" : tc.status === "wa" ? "4px solid #f44336" : "4px solid #888" }}>
+        <div key={index} style={{ background: "var(--bg-elevated)", padding: "10px", marginBottom: "10px", borderRadius: "4px", borderLeft: tc.status === "ac" ? "4px solid #40b864" : tc.status === "wa" ? "4px solid #f44336" : "4px solid #888" }}>
           
           {/* 单个用例的 Header */}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", alignItems: "center" }}>
@@ -83,7 +92,7 @@ export default function TestPanel({ testCases, setTestCases, width }: TestPanelP
           </div>
 
           {/* 实际运行结果展示区 */}
-          <pre style={{ margin: 0, padding: "8px", background: "#1e1e1e", borderRadius: "4px", fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#aaa", whiteSpace: "pre-wrap" }}>
+          <pre style={{ margin: 0, padding: "8px", background: "var(--bg-input)", borderRadius: "4px", fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#aaa", whiteSpace: "pre-wrap" }}>
             {tc.actual || "等待运行..."}
           </pre>
         </div>
@@ -94,6 +103,6 @@ export default function TestPanel({ testCases, setTestCases, width }: TestPanelP
 
 // 把原本在 App.tsx 底部的样式挪到这里，因为它只属于这个面板
 const inputStyle: React.CSSProperties = {
-  flex: 1, height: "45px", background: "#1a1a1a", color: "#fff",
-  border: "1px solid #444", borderRadius: "4px", fontSize: "11px", padding: "4px",
+  flex: 1, height: "45px", background: "var(--bg-input)", color: "var(--text)",
+  border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", padding: "4px",
 };

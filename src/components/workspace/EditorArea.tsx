@@ -6,7 +6,30 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { invoke } from "@tauri-apps/api/core";
 import { CompileSettings } from "../../config/types";
+import { CodeTheme } from "../../config/constants";
+import { COMMON_COLORS, THEME_RULES } from "../../config/codeThemes";
 import InteractorTab from "./InteractorTab";
+
+/**
+ * Monaco 主题：透明背景 + 预设配色 + 用户自定义色。
+ *
+ * 颜色表在 config/codeThemes.ts，设置页改的 tokenColors 会在这里覆盖预设。
+ */
+function defineEditorTheme(monaco: any, tokenColors: Record<string, string>) {
+  for (const name of ["contrast", "soft", "mono"]) {
+    const rules = THEME_RULES[name].map((rule) => {
+      const custom = tokenColors[rule.token];
+      return custom ? { ...rule, foreground: custom.replace("#", "") } : rule;
+    });
+
+    monaco.editor.defineTheme(`icnana-${name}`, {
+      base: "vs-dark",
+      inherit: true,
+      rules,
+      colors: COMMON_COLORS,
+    });
+  }
+}
 
 interface EditorAreaProps {
   activeFile: string;
@@ -16,10 +39,12 @@ interface EditorAreaProps {
   problemMeta: any; // 替换为 QuestionMeta | null
   problemMarkdown: string;
   testCases: any[]; // 替换为 TestCase[]
-  setTestCases: React.Dispatch<React.SetStateAction<any[]>>; // 替换为 TestCase[]
   setProblemMeta: (meta: any) => void;
   compileSettings: CompileSettings;
   tabShortcut: string;
+  codeTheme: CodeTheme;
+  tokenColors: Record<string, string>;
+  terminalColors: { input: string; output: string; system: string };
 }
 
 export default function EditorArea({
@@ -30,10 +55,12 @@ export default function EditorArea({
   problemMeta,
   problemMarkdown,
   testCases,
-  setTestCases,
   setProblemMeta,
   compileSettings,
-  tabShortcut
+  tabShortcut,
+  codeTheme,
+  tokenColors,
+  terminalColors,
 }: EditorAreaProps) {
   
   // 1️⃣ 纯内部 UI 状态：当前是看代码还是看题目
@@ -76,6 +103,13 @@ export default function EditorArea({
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [tabShortcut, viewMode]);
+
+  // 配色修改后重新注册主题并刷新生效（Monaco 不会自动感知 defineTheme 的变化）
+  useEffect(() => {
+    if (!monaco) return;
+    defineEditorTheme(monaco, tokenColors);
+    monaco.editor.setTheme(`icnana-${codeTheme}`);
+  }, [monaco, codeTheme, tokenColors]);
 
   // 切到交互/通信题时自动落在交互器标签页
   useEffect(() => {
@@ -160,84 +194,129 @@ export default function EditorArea({
     }
   };
 
-  // 交互题自测
-  // 4️⃣ 运行全部样例的处理函数
-  const handleRunAll = async () => {
-    if (!activeFile) return;
-    setViewMode("code"); // 自动切回代码视图方便观察
-    
-    const loading = testCases.map(c => ({ 
-      ...c,
-      actual: "正在运行喵...",
-      status: "pending" as const 
-    }));
-    setTestCases(loading);
+  const [editingLimit, setEditingLimit] = useState<"time" | "memory" | null>(null);
+  const [limitDraft, setLimitDraft] = useState("");
+
+  // 改时间 / 内存限制（失焦或回车时落盘）
+  const saveLimit = async (kind: "time" | "memory", raw: string) => {
+    if (!activeFile || !problemMeta) return;
+    const value = Math.round(Number(raw));
+    if (!Number.isFinite(value) || value <= 0) return;
+
+    const timeLimit = kind === "time" ? value : problemMeta.timeLimit;
+    const memoryLimit = kind === "memory" ? value : problemMeta.memoryLimit;
+    if (timeLimit === problemMeta.timeLimit && memoryLimit === problemMeta.memoryLimit) return;
 
     try {
-      const res = await invoke<any[]>("judge_all", { // 替换为 TestCase[]
-        filename: activeFile, 
-        code,
-        cases: loading,
-        settings: compileSettings
-      });
-      setTestCases(res);
-      await invoke("save_test_cases", { filename: activeFile, cases: res });
+      await invoke("set_problem_limits", { stem: activeFile, timeLimit, memoryLimit });
+      setProblemMeta({ ...problemMeta, timeLimit, memoryLimit });
     } catch (e) {
-      console.error("运行或保存失败了喵:", e);
+      alert(e);
     }
   };
 
+  const limitInput = (kind: "time" | "memory", value: number, unit: string) => {
+    if (editingLimit === kind) {
+      return (
+        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-faint)" }}>
+          <input
+            autoFocus
+            value={limitDraft}
+            onChange={(e) => setLimitDraft(e.target.value.replace(/[^0-9]/g, ""))}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={() => {
+              setEditingLimit(null);
+              saveLimit(kind, limitDraft);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                setEditingLimit(null);
+                saveLimit(kind, limitDraft);
+              } else if (e.key === "Escape") {
+                setEditingLimit(null);
+              }
+            }}
+            style={{
+              width: 42,
+              background: "transparent",
+              border: "none",
+              borderBottom: "1px solid var(--accent-blue)",
+              color: "var(--text)",
+              fontSize: 11,
+              textAlign: "right",
+              outline: "none",
+              padding: 0,
+            }}
+          />
+          {unit}
+        </label>
+      );
+    }
+
+    return (
+      <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-faint)" }}>
+        <span
+          onClick={() => {
+            setLimitDraft(String(value));
+            setEditingLimit(kind);
+          }}
+          title="点击修改"
+          style={{
+            cursor: "text",
+            borderBottom: "1px dashed rgba(255,255,255,0.20)",
+            padding: "0 1px",
+          }}
+        >
+          {value}
+        </span>
+        {unit}
+      </label>
+    );
+  };
+
+  // 交互题自测
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px", minWidth: 0, height: "100%" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 8px", minWidth: 0, height: "100%" }}>
       {/* ── 中间主面板 ── */}
-      <div className="center-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: "1px solid #444", borderRadius: "8px", background: "#1e1e1e" }}>
+      <div className="center-panel ide-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         
         {/* Tab 切换栏 */}
         <div className="editor-tabs">
           <button className={`editor-tab${viewMode === "code" ? " active" : ""}`} onClick={() => setViewMode("code")}>
-            💻 代码实现
+            代码实现
           </button>
           <button className={`editor-tab${viewMode === "problem" ? " active" : ""}`} onClick={() => setViewMode("problem")}>
-            📖 题目描述
+            题目描述
           </button>
           <button className={`editor-tab${viewMode === "interactive" ? " active" : ""}`} onClick={() => setViewMode("interactive")}>
-            🔀 交互器
+            交互器
           </button>
-        </div>
 
-        {/* 题目元数据毛玻璃面板 */}
-        {problemMeta && (
-          <div style={{ background: "rgba(30, 30, 35, 0.4)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "12px" }}>
-              <span style={{ fontWeight: 900, fontSize: "15px", color: "#82AAFF" }}>{problemMeta.name}</span>
-              <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.4)" }}>{problemMeta.group}</span>
-            </div>
-            <div style={{ display: "flex", gap: "15px", fontSize: "12px", fontFamily: "monospace", alignItems: "center" }}>
-              <div style={{ display: "flex", gap: "2px", background: "rgba(255,255,255,0.05)", borderRadius: "5px", padding: "2px" }}>
+          {problemMeta && (
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, paddingRight: 4 }}>
+              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.06)", borderRadius: 7, padding: 2 }}>
                 {PROBLEM_TYPES.map(t => (
                   <button
                     key={t.key}
                     onClick={() => handleSetProblemType(t.key)}
                     title={`把这题标成${t.label}题`}
                     style={{
-                      background: currentType === t.key ? "rgba(255,255,255,0.14)" : "transparent",
-                      color: currentType === t.key ? t.color : "#6b7280",
-                      border: "none", borderRadius: "4px", padding: "2px 8px",
-                      fontSize: "11px", cursor: "pointer", fontWeight: currentType === t.key ? 700 : 400,
+                      background: currentType === t.key ? "rgba(255,255,255,0.18)" : "transparent",
+                      color: currentType === t.key ? "#fff" : "rgba(255,255,255,0.6)",
+                      border: "none", borderRadius: 6, padding: "2px 8px",
+                      fontSize: 11, cursor: "pointer",
+                      fontWeight: currentType === t.key ? 700 : 500,
                     }}
                   >
                     {t.label}
                   </button>
                 ))}
               </div>
-              <div style={{ color: "#C3E88D" }}>⏱️ {problemMeta.timeLimit} ms</div>
-              <div style={{ color: "#F07178" }}>💾 {problemMeta.memoryLimit} MB</div>
-              {problemMeta.url && (
-                <a href={problemMeta.url} target="_blank" rel="noreferrer" style={{ color: "#89DDFF", textDecoration: "none", opacity: 0.8 }}>🔗 原题</a>
-              )}
+              {limitInput("time", problemMeta.timeLimit, "ms")}
+              {limitInput("memory", problemMeta.memoryLimit, "MB")}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 动态内容区 */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -247,7 +326,8 @@ export default function EditorArea({
                 height="100%"
                 path="main.cpp"
                 defaultLanguage="cpp"
-                theme="vs-dark"
+                theme={`icnana-${codeTheme}`}
+                beforeMount={(m) => defineEditorTheme(m, tokenColors)}
                 value={code}
                 onChange={v => setCode(v || "")}
                 onMount={editor => { codeModelRef.current = editor.getModel(); }}
@@ -282,17 +362,12 @@ export default function EditorArea({
                 problemMeta={problemMeta}
                 testCases={testCases}
                 compileSettings={compileSettings}
+                terminalColors={terminalColors}
               />
             </div>
         </div>
       </div>
       
-      {/* 底部运行按钮（交互模式有自己的运行按钮） */}
-      {viewMode !== "interactive" && (
-        <button className="run-button" onClick={handleRunAll}>
-          ▶ 运行全部样例 {activeFile ? `(${activeFile})` : ""}
-        </button>
-      )}
     </div>
   );
 }

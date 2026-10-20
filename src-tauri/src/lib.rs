@@ -34,6 +34,22 @@ pub fn run() {
                 println!("📦 已从旧目录迁移 {count} 个题目文件夹");
             }
 
+            // ── 内置工具链：放数据目录，首次启动时从资源里的 7z 解压 ──
+            let toolchain_dir = workspace
+                .parent()
+                .map(|p| p.join("toolchain"))
+                .unwrap_or_else(|| workspace.join("toolchain"));
+            compiler::hidden_cmd::init_toolchain_dir(toolchain_dir.clone());
+
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                match command::toolchain::ensure_toolchain(&handle, &toolchain_dir) {
+                    Ok(Some(exe)) => println!("🛠️ 内置工具链: {}", exe.display()),
+                    Ok(None) => {}
+                    Err(e) => eprintln!("⚠️ 工具链准备失败: {e}"),
+                }
+            });
+
             app.manage(command::manual_interaction::InteractionState::default());
             let app_handle = app.handle().clone();
             let state = command::companion::AppState { app_handle };
@@ -71,7 +87,9 @@ pub fn run() {
             command::workspace::rename_workspace_file,
             command::workspace::save_code_template,
             command::workspace::set_problem_type,
+            command::workspace::set_problem_limits,
             command::workspace::get_workspace_path,
+            command::assets::read_image_as_data_url,
 
             command::collections::list_collections,
             command::collections::create_collection,

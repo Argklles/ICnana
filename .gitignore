@@ -29,3 +29,7 @@ workspace/
 # OJ 浏览器 Cookie 缓存（运行时生成，不提交）
 src-tauri/.oj_cookies/
 src-tauri/.oj_cookies_data/
+
+# 沙箱里用来缓存的 cargo home（不该进仓库）
+.cargo-home/
+.testdata/

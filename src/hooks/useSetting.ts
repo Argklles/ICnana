@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, TAB_SHORTCUTS } from "../config/constants"
-import { CompileSettings } from "../config/types"
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { CodeTheme, DEFAULT_APPEARANCE, DEFAULT_CODE_SHADOW, DEFAULT_CODE_THEME, DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, DEFAULT_TERMINAL_COLORS, TAB_SHORTCUTS, TerminalColors } from "../config/constants"
+import { Appearance, CompileSettings, ThemePreset } from "../config/types"
 import type { TabShortcut } from "../config/constants"
 
 // 把模板同步给后端：拉取题面时后端要用它拼「题目信息 + 代码模板」写入 main.cpp
@@ -27,11 +28,15 @@ int main() {
 }`;
 
 // 读回上次保存的编译设置，缺字段用默认值补齐（兼容旧版本）。
+// 老版本默认是 c++14，存档里如果还是这个值说明用户没动过，跟着新默认（c++17）走。
 function loadCompileSettings(): CompileSettings {
     try {
         const raw = localStorage.getItem(COMPILE_SETTINGS_KEY);
         if (!raw) return DEFAULT_COMPILE_SETTINGS;
-        return { ...DEFAULT_COMPILE_SETTINGS, ...JSON.parse(raw) };
+
+        const merged = { ...DEFAULT_COMPILE_SETTINGS, ...JSON.parse(raw) };
+        if (merged.std === "c++14") merged.std = DEFAULT_COMPILE_SETTINGS.std;
+        return merged;
     } catch {
         return DEFAULT_COMPILE_SETTINGS;
     }
@@ -44,6 +49,15 @@ export function useSetting() {
     const [indentSize, setIndentSize] = useState<2 | 4>(2);
     const [compileSettings, setCompileSettings] = useState<CompileSettings>(DEFAULT_COMPILE_SETTINGS);
     const [tabShortcut, setTabShortcut] = useState<TabShortcut>(DEFAULT_TAB_SHORTCUT);
+    const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
+    const [editingAppearance, setEditingAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
+    const [appearanceError, setAppearanceError] = useState<string>("");
+    const [useSystemTitleBar, setUseSystemTitleBar] = useState<boolean>(false);
+    const [codeTheme, setCodeTheme] = useState<CodeTheme>(DEFAULT_CODE_THEME);
+    const [codeShadow, setCodeShadow] = useState<number>(DEFAULT_CODE_SHADOW);
+    const [tokenColors, setTokenColors] = useState<Record<string, string>>({});
+    const [presets, setPresets] = useState<ThemePreset[]>([]);
+    const [terminalColors, setTerminalColors] = useState<TerminalColors>(DEFAULT_TERMINAL_COLORS);
     const [editingShortcut, setEditingShortcut] = useState<TabShortcut>(DEFAULT_TAB_SHORTCUT);
 
     // 编辑中的副本：点“保存”才写回，点“取消”直接丢弃
@@ -79,10 +93,187 @@ export function useSetting() {
             setEditingShortcut(savedShortcut as TabShortcut);
         }
 
+        const savedAppearance = localStorage.getItem("icnana_appearance");
+        if (savedAppearance) {
+            try {
+                const parsed = { ...DEFAULT_APPEARANCE, ...JSON.parse(savedAppearance) };
+                setAppearance(parsed);
+                setEditingAppearance(parsed);
+            } catch { /* 坏数据就用默认 */ }
+        }
+
+        setUseSystemTitleBar(localStorage.getItem("icnana_system_titlebar") === "1");
+
+        const savedTheme = localStorage.getItem("icnana_code_theme") as CodeTheme | null;
+        if (savedTheme === "contrast" || savedTheme === "soft" || savedTheme === "mono") setCodeTheme(savedTheme);
+
+        const savedShadow = localStorage.getItem("icnana_code_shadow");
+        if (savedShadow !== null) setCodeShadow(Number(savedShadow));
+
+        const savedPresets = localStorage.getItem("icnana_appearance_presets");
+        if (savedPresets) {
+            try { setPresets(JSON.parse(savedPresets)); } catch { /* 坏数据忽略 */ }
+        }
+
+        const savedTerminal = localStorage.getItem("icnana_terminal_colors");
+        if (savedTerminal) {
+            try { setTerminalColors({ ...DEFAULT_TERMINAL_COLORS, ...JSON.parse(savedTerminal) }); } catch { /* 坏数据忽略 */ }
+        }
+
+        const savedTokens = localStorage.getItem("icnana_code_tokens");
+        if (savedTokens) {
+            try { setTokenColors(JSON.parse(savedTokens)); } catch { /* 坏数据忽略 */ }
+        }
+
         const loadedCompile = loadCompileSettings();
         setCompileSettings(loadedCompile);
         setEditingCompile(loadedCompile);
     }, []);
+
+    // 外观变化时同步到 :root，所有面板都读这些变量。
+    // 设置面板开着时用草稿值做实时预览，关掉就回到已保存的值。
+    useEffect(() => {
+        const a = showSettings ? editingAppearance : appearance;
+        const style = document.documentElement.style;
+
+        // 玻璃颜色：hex → "r g b"（rgb() 里带空格分隔的写法要用这个形式）
+        const toRgb = (hexColor: string) => {
+            const hex = hexColor.replace("#", "");
+            const full = hex.length === 3 ? hex.split("").map(c => c + c).join("") : hex;
+            return [
+                parseInt(full.slice(0, 2), 16) || 0,
+                parseInt(full.slice(2, 4), 16) || 0,
+                parseInt(full.slice(4, 6), 16) || 0,
+            ].join(" ");
+        };
+
+        style.setProperty("--glass-rgb", toRgb(a.glassColor));
+        style.setProperty(
+            "--glass-gradient",
+            a.glassGradient
+                ? `linear-gradient(135deg, rgb(${toRgb(a.glassColor)} / ${a.glassAlpha}), rgb(${toRgb(a.glassColor2)} / ${a.glassAlpha}))`
+                : "none",
+        );
+        style.setProperty("--glass-alpha", String(a.glassAlpha));
+        style.setProperty("--glass-blur", String(a.glassBlur));
+        style.setProperty("--glass-saturate", String(1 + a.glassFidelity * 0.8));
+
+        style.setProperty("--scrim-alpha", String(a.scrim));
+        style.setProperty("--titlebar-alpha", String(a.titlebarAlpha));
+        style.setProperty("--titlebar-rgb", toRgb(a.titlebarColor));
+        style.setProperty("--titlebar-blur", String(a.titlebarBlur));
+        style.setProperty("--code-shadow", String(codeShadow));
+        style.setProperty("--bg-image-opacity", String(a.bgOpacity));
+
+        style.setProperty("--accent-blue", a.blue);
+        style.setProperty("--accent-pink", a.pink);
+
+        // 四角独立圆角：直角给 0，否则用统一值
+        const radiusOf = (square: boolean[]) => {
+            const r = `${a.radius}px`;
+            const [tl, tr, br, bl] = square.length === 4 ? square : [false, false, false, false];
+            return `${tl ? 0 : r} ${tr ? 0 : r} ${br ? 0 : r} ${bl ? 0 : r}`;
+        };
+        style.setProperty("--panel-left-radius", radiusOf(a.leftSquare));
+        style.setProperty("--panel-right-radius", radiusOf(a.rightSquare));
+    }, [
+        showSettings, appearance, editingAppearance, codeShadow,
+    ]);
+
+    // ── 外观预设 ───────────────────────────────────────────
+    /** 把当前设置存成一个预设（只存本地，不进仓库） */
+    const savePreset = (name: string) => {
+        const preset: ThemePreset = {
+            id: `p-${Date.now()}`,
+            name: name.trim() || "未命名预设",
+            appearance: { ...(showSettings ? editingAppearance : appearance) },
+        };
+        const next = [...presets, preset];
+        setPresets(next);
+        localStorage.setItem("icnana_appearance_presets", JSON.stringify(next));
+    };
+
+    const deletePreset = (id: string) => {
+        const next = presets.filter((p) => p.id !== id);
+        setPresets(next);
+        localStorage.setItem("icnana_appearance_presets", JSON.stringify(next));
+    };
+
+    /** 套用预设（写进草稿，点保存才落盘） */
+    const applyPreset = (preset: ThemePreset) => {
+        const merged = { ...DEFAULT_APPEARANCE, ...preset.appearance };
+        setEditingAppearance(merged);
+        if (!showSettings) setAppearance(merged);
+    };
+
+    // 代码配色/描边：改了就生效，不用等保存
+    const updateCodeTheme = (v: CodeTheme) => {
+        setCodeTheme(v);
+        localStorage.setItem("icnana_code_theme", v);
+    };
+    const updateCodeShadow = (v: number) => {
+        setCodeShadow(v);
+        localStorage.setItem("icnana_code_shadow", String(v));
+    };
+
+    const updateTerminalColor = (key: keyof TerminalColors, color: string) => {
+        const next = { ...terminalColors, [key]: color };
+        setTerminalColors(next);
+        localStorage.setItem("icnana_terminal_colors", JSON.stringify(next));
+    };
+
+    /** 改某一类元素的颜色；传空字符串表示恢复预设 */
+    const updateTokenColor = (token: string, color: string) => {
+        const next = { ...tokenColors };
+        if (!color) delete next[token];
+        else next[token] = color;
+        setTokenColors(next);
+        localStorage.setItem("icnana_code_tokens", JSON.stringify(next));
+    };
+
+    // 系统标题栏开关：切换后即时生效，不需要重启
+    useEffect(() => {
+        localStorage.setItem("icnana_system_titlebar", useSystemTitleBar ? "1" : "0");
+        getCurrentWindow().setDecorations(useSystemTitleBar).catch((e) => {
+            console.warn("切换标题栏失败:", e);
+        });
+    }, [useSystemTitleBar]);
+
+    // 背景图单独处理：http 直接用，本地文件交给 Rust 读成 data URL
+    useEffect(() => {
+        let alive = true;
+        const raw = appearance.bgImage.trim();
+
+        // 有壁纸、或用户没开「渐变底」时，都保持纯黑底
+        const useGradient = !raw && (showSettings ? editingAppearance : appearance).baseGradient;
+        if (useGradient) {
+            document.documentElement.style.removeProperty("--base-gradient");
+        } else {
+            document.documentElement.style.setProperty("--base-gradient", "none");
+        }
+        const apply = (url: string) => {
+            if (!alive) return;
+            document.documentElement.style.setProperty("--app-bg-image", url ? `url("${url}")` : "none");
+        };
+
+        setAppearanceError("");
+
+        if (!raw) {
+            apply("");
+        } else if (/^https?:\/\//i.test(raw)) {
+            apply(raw);
+        } else {
+            invoke<string>("read_image_as_data_url", { path: raw })
+                .then((url) => { apply(url); setAppearanceError(""); })
+                .catch((e) => {
+                    console.warn("背景图加载失败:", e);
+                    apply("");
+                    if (alive) setAppearanceError(String(e));
+                });
+        }
+
+        return () => { alive = false; };
+    }, [appearance.bgImage]);
 
     // ── 保存设置 ───────────────────────────────────────────
     const saveSettings = () => {
@@ -92,6 +283,11 @@ export function useSetting() {
         setTabShortcut(editingShortcut);
         localStorage.setItem("icnana_tab_shortcut", editingShortcut);
 
+        setAppearance(editingAppearance);
+        localStorage.setItem("icnana_appearance", JSON.stringify(editingAppearance));
+
+        localStorage.setItem("icnana_code_theme", codeTheme);
+        localStorage.setItem("icnana_code_shadow", String(codeShadow));
         localStorage.setItem("icnana_code_template", editingTemplate);
         localStorage.setItem("icnana_indent_size", String(editingIndent));
         localStorage.setItem(COMPILE_SETTINGS_KEY, JSON.stringify(editingCompile));
@@ -105,6 +301,7 @@ export function useSetting() {
         setEditingIndent(2);
         setEditingCompile(DEFAULT_COMPILE_SETTINGS);
         setEditingShortcut(DEFAULT_TAB_SHORTCUT);
+        setEditingAppearance(DEFAULT_APPEARANCE);
     };
 
     // 每次打开面板都从已保存的值同步一份草稿，避免上次“取消”的编辑残留
@@ -113,6 +310,7 @@ export function useSetting() {
         setEditingIndent(indentSize);
         setEditingCompile(compileSettings);
         setEditingShortcut(tabShortcut);
+        setEditingAppearance(appearance);
         setShowSettings(true);
     };
 
@@ -124,6 +322,15 @@ export function useSetting() {
         compileSettings, setCompileSettings,
         tabShortcut, setTabShortcut,
         editingShortcut, setEditingShortcut,
+        appearance, setAppearance,
+        editingAppearance, setEditingAppearance,
+        appearanceError,
+        useSystemTitleBar, setUseSystemTitleBar,
+        codeTheme, updateCodeTheme,
+        codeShadow, updateCodeShadow,
+        tokenColors, updateTokenColor,
+        presets, savePreset, deletePreset, applyPreset,
+        terminalColors, updateTerminalColor,
         editingTemplate, setEditingTemplate,
         editingIndent, setEditingIndent,
         editingCompile, setEditingCompile,

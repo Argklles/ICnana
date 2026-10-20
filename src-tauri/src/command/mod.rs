@@ -6,3 +6,5 @@ pub mod history_testcase;
 pub mod compiler;
 pub mod collections;
 pub mod manual_interaction;
+pub mod assets;
+pub mod toolchain;

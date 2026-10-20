@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState , useRef , useEffect} from "react";
-import { TestCase , QuestionMeta, WorkspaceFile, Collection } from "../config/types"
+import { TestCase , QuestionMeta, WorkspaceFile, Collection, CompileSettings } from "../config/types"
 import { FAVORITES_ID } from "../config/constants"
 
 export function useWorkspace() {
@@ -151,6 +151,31 @@ export function useWorkspace() {
         localStorage.setItem("icnana_active_file", filename);
     };
 
+    // ── 运行全部样例（由右侧「测试用例」面板的按钮触发）─────────
+    const runAll = async (settings: CompileSettings) => {
+        if (!activeFileRef.current) return;
+
+        const loading = testCasesRef.current.map(c => ({
+            ...c,
+            actual: "正在运行喵...",
+            status: "pending" as const,
+        }));
+        setTestCases(loading);
+
+        try {
+            const res = await invoke<TestCase[]>("judge_all", {
+                filename: activeFileRef.current,
+                code: codeRef.current,
+                cases: loading,
+                settings,
+            });
+            setTestCases(res);
+            await invoke("save_test_cases", { filename: activeFileRef.current, cases: res });
+        } catch (e) {
+            console.error("运行或保存失败了喵:", e);
+        }
+    };
+
     // ── 集合（收藏夹就是 id 为 favorites 的那个内置集合）───────
     const refreshCollections = async () => {
         try {
@@ -220,6 +245,7 @@ export function useWorkspace() {
         problemMarkdown, setproblemMarkdown, 
         collections, setCollections,
         //方法
+        runAll,
         createFile,
         deleteFile,
         renameFile,

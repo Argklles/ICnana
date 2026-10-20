@@ -9,10 +9,11 @@ import { TabType } from "./config/types";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { useSetting } from "./hooks/useSetting"; // 记得确保文件名拼写改对了
 import { useProblem } from "./hooks/usePloblem"; // 沿用你的文件名
-import { useBrowser } from "./hooks/useBrowser";
 
 // 3️⃣ 引入你的“手脚” UI 组件
 import FileSidebar from "./components/workspace/FileSildbar";
+import TitleBar from "./components/layout/TitleBar";
+import { useTauriEvent } from "./hooks/useTauriEvent";
 import EditorArea from "./components/workspace/EditorArea";
 import TestPanel from "./components/workspace/TestPanel";
 import SettingsPanel from "./components/settings/SettingsPanel";
@@ -24,7 +25,6 @@ export default function App() {
   // ── 激活 Hooks 拿到所有数据和方法 ──
   const workspace = useWorkspace();
   const setting = useSetting();
-  const browser = useBrowser();
   
   // 题目接收处理器，需要用到 workspace 的部分能力
   const problemHandler = useProblem({
@@ -38,12 +38,25 @@ export default function App() {
   // ── 首次启动引导：没有编译器时给一条横幅，别等到点了运行才报错 ──
   const [compilerMissing, setCompilerMissing] = useState(false);
   const [guideDismissed, setGuideDismissed] = useState(false);
+  const [toolchainBusy, setToolchainBusy] = useState(false);
 
-  useEffect(() => {
+  const refreshCompiler = () => {
     invoke<any>("get_compiler_info")
       .then(info => setCompilerMissing(!info.found))
       .catch(() => { /* 探测失败就不打扰用户 */ });
-  }, []);
+  };
+
+  useEffect(() => { refreshCompiler(); }, []);
+
+  // 内置工具链首启解压：解压中显示进度提示，完成后重新探测编译器
+  useTauriEvent<{ stage: string; message: string }>("toolchain-status", (payload) => {
+    if (payload.stage === "extracting") {
+      setToolchainBusy(true);
+    } else {
+      setToolchainBusy(false);
+      if (payload.stage === "ready") refreshCompiler();
+    }
+  });
 
   // ── 面板宽度（可拖动布局） ──
   const [fileSidebarWidth, setFileSidebarWidth] = useState(160);
@@ -70,48 +83,27 @@ export default function App() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
-  // 点击收藏栏快速跳转
-  const handleFavoriteClick = (url: string) => {
-    browser.setOjUrl(url);
-    setActiveTab("browser");
-  };
-
-  // ── 纯样式常量（为了不污染顶部，放在组件内） ──
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: "8px 16px", background: active ? "#1e1e1e" : "transparent",
-    color: active ? "#fff" : "#999", borderRadius: "6px 6px 0 0", cursor: "pointer",
-    fontSize: "13px", borderBottom: active ? "2px solid #40b864" : "2px solid transparent",
-    transition: "0.2s", userSelect: "none",
-  });
-  const favButtonStyle: React.CSSProperties = {
-    padding: "4px 10px", background: "#333", color: "#bbb", border: "1px solid #444",
-    borderRadius: "15px", fontSize: "11px", cursor: "pointer", transition: "0.2s",
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#1a1a1a", color: "#d4d4d4", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "transparent", color: "var(--text)", overflow: "hidden" }}>
       
-      {/* 🟢 顶部导航与工具栏 (TopNavBar 部分暂留此处，若嫌长后续可单独抽离) */}
-      <div style={{ display: "flex", background: "#252526", padding: "8px 12px 0 12px", gap: "4px", borderBottom: "1px solid #333", alignItems: "center", zIndex: 20, flexShrink: 0 }}>
-        <div onClick={() => setActiveTab("code")} style={tabStyle(activeTab === "code")}>IDE</div>
-        {/* <div onClick={() => setActiveTab("browser")} style={tabStyle(activeTab === "browser")}>🌐 OJ 浏览器</div> */}
+      <TitleBar
+        activeTab={activeTab}
+        onSelectTab={(key) => setActiveTab(key as TabType)}
+        settingsOpen={setting.showSettings}
+        onToggleSettings={() => (setting.showSettings ? setting.setShowSettings(false) : setting.openSettings())}
+        useSystemTitleBar={setting.useSystemTitleBar}
+      />
 
-        <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: "8px", paddingBottom: "8px", marginLeft: "20px", alignItems: "center" }}>
-          
-          {/* ⚙️ 设置按钮 (接入 setting Hook) */}
-          <button onClick={() => (setting.showSettings ? setting.setShowSettings(false) : setting.openSettings())} style={{ ...favButtonStyle, padding: "4px 9px", fontSize: "13px", background: setting.showSettings ? "#444" : "#2d2d2d" }}>⚙️</button>
-          
-          <span style={{ fontSize: "11px", color: "#555", userSelect: "none" }}>|</span>
-          <span style={{ fontSize: "11px", color: "#666", alignSelf: "center", marginRight: "4px" }}>快捷收藏:</span>
-          
-          {/* 收藏夹渲染 (接入 browser Hook) */}
-          {browser.favorites.map(oj => (
-            <button key={oj.name} onClick={() => handleFavoriteClick(oj.url)} onContextMenu={e => { e.preventDefault(); browser.deleteFavorite(oj.name); }} style={favButtonStyle} title={oj.url}>
-              {oj.name}
-            </button>
-          ))}
+      {toolchainBusy && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 14px", background: "rgba(110,168,254,0.14)",
+          borderBottom: "1px solid rgba(110,168,254,0.35)",
+          color: "#cfe6ff", fontSize: 12, flexShrink: 0,
+        }}>
+          <span>🛠️ 首次启动，正在解压内置编译器（约 500MB），完成后右下角会提示……</span>
         </div>
-      </div>
+      )}
 
       {/* 🟢 首次启动引导横幅 */}
       {compilerMissing && !guideDismissed && (
@@ -140,7 +132,10 @@ export default function App() {
 
       {/* 🟢 主体内容区域 */}
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        
+
+        {/* 压暗层：壁纸之上、所有面板之下 */}
+        <div className="content-scrim" />
+
         {/* ── 💻 代码实验室 (受 activeTab 控制) ── */}
         <div style={{ display: "flex", width: "100%", height: "100%", position: "absolute", visibility: activeTab === "code" ? "visible" : "hidden", zIndex: activeTab === "code" ? 10 : 0 }}>
           
@@ -157,23 +152,27 @@ export default function App() {
             width={fileSidebarWidth} codeTemplate={setting.codeTemplate}
           />
 
-          <div className="resize-divider" onMouseDown={e => { draggingFiles.current = true; dragStartX.current = e.clientX; dragStartW.current = fileSidebarWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", zIndex: 5 }} />
+          <div className="resize-divider" onMouseDown={e => { draggingFiles.current = true; dragStartX.current = e.clientX; dragStartW.current = fileSidebarWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
 
           {/* 中间：编辑器与题面组件 */}
           <EditorArea 
             activeFile={workspace.activeFile} code={workspace.code} setCode={workspace.setCode}
             indentSize={setting.indentSize} problemMeta={workspace.problemMeta}
-            problemMarkdown={workspace.problemMarkdown} testCases={workspace.testCases} setTestCases={workspace.setTestCases}
+            problemMarkdown={workspace.problemMarkdown} testCases={workspace.testCases}
             setProblemMeta={workspace.setProblemMeta}
             compileSettings={setting.compileSettings}
             tabShortcut={setting.tabShortcut}
+            codeTheme={setting.codeTheme}
+            tokenColors={setting.tokenColors}
+            terminalColors={setting.terminalColors}
           />
 
-          <div className="resize-divider" onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", zIndex: 5 }} />
+          <div className="resize-divider" onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "transparent", cursor: "col-resize", zIndex: 5 }} />
 
           {/* 右侧：测试用例面板组件 */}
           <TestPanel 
             testCases={workspace.testCases} setTestCases={workspace.setTestCases} width={testPanelWidth}
+            onRunAll={() => workspace.runAll(setting.compileSettings)}
           />
         </div>
 
@@ -213,6 +212,23 @@ export default function App() {
           setEditingCompile={setting.setEditingCompile}
           editingShortcut={setting.editingShortcut}
           setEditingShortcut={setting.setEditingShortcut}
+          editingAppearance={setting.editingAppearance}
+          setEditingAppearance={setting.setEditingAppearance}
+          appearanceError={setting.appearanceError}
+          presets={setting.presets}
+          onSavePreset={setting.savePreset}
+          onDeletePreset={setting.deletePreset}
+          onApplyPreset={setting.applyPreset}
+          useSystemTitleBar={setting.useSystemTitleBar}
+          setUseSystemTitleBar={setting.setUseSystemTitleBar}
+          codeTheme={setting.codeTheme}
+          setCodeTheme={setting.updateCodeTheme}
+          codeShadow={setting.codeShadow}
+          setCodeShadow={setting.updateCodeShadow}
+          tokenColors={setting.tokenColors}
+          setTokenColor={setting.updateTokenColor}
+          terminalColors={setting.terminalColors}
+          setTerminalColor={setting.updateTerminalColor}
         />
       )}
     </div>

@@ -38,7 +38,7 @@ function colorOfCollection(collection: Collection): string {
 const sectionTitleStyle: CSSProperties = {
   padding: "7px 8px 3px",
   fontSize: "10px",
-  color: "#6b7280",
+  color: "var(--text-faint)",
   letterSpacing: "0.6px",
   fontWeight: 700,
   userSelect: "none",
@@ -115,7 +115,7 @@ export default function FileSidebar({
             padding: "7px 8px",
             cursor: "pointer",
             background: isActive ? "#094771" : "transparent",
-            color: isActive ? "#fff" : "#bbb",
+            color: isActive ? "var(--text)" : "var(--text-dim)",
             fontSize: "12px",
             display: "flex",
             alignItems: "center",
@@ -135,12 +135,12 @@ export default function FileSidebar({
               onBlur={() => handleRename(file.stem)}
               onClick={e => e.stopPropagation()}
               autoFocus
-              style={{ background: "#2d2d2d", border: "1px solid #007acc", borderRadius: "2px", color: "#fff", padding: "2px 4px", fontSize: "11px", outline: "none", width: "100%", boxSizing: "border-box" }}
+              style={{ background: "var(--bg-input)", border: "1px solid var(--accent-blue)", borderRadius: "2px", color: "var(--text)", padding: "2px 4px", fontSize: "11px", outline: "none", width: "100%", boxSizing: "border-box" }}
             />
           ) : (
             <>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                📄 {file.name || file.stem}
+                {file.name || file.stem}
               </span>
 
               {/* ⭐ 收藏 */}
@@ -150,15 +150,7 @@ export default function FileSidebar({
                   toggleFavorite(file.stem, !file.favorite);
                 }}
                 title={file.favorite ? "取消收藏" : "加入收藏"}
-                style={{
-                  fontSize: "12px",
-                  flexShrink: 0,
-                  color: file.favorite ? "#f5c542" : "#555",
-                  cursor: "pointer",
-                  opacity: file.favorite || isActive ? 1 : 0,
-                  transition: "opacity 0.15s, color 0.15s",
-                }}
-                className={file.favorite ? undefined : "file-star-btn"}
+                className={`icon-btn${file.favorite ? " star-on" : " file-star-btn"}`}
               >
                 {file.favorite ? "★" : "☆"}
               </span>
@@ -170,27 +162,20 @@ export default function FileSidebar({
                   setMenuFor(isMenuOpen ? null : file.stem);
                 }}
                 title="加入集合"
-                style={{
-                  fontSize: "12px",
-                  flexShrink: 0,
-                  color: isMenuOpen ? "#8ab4f8" : "#555",
-                  cursor: "pointer",
-                  opacity: isMenuOpen || isActive ? 1 : 0,
-                  transition: "opacity 0.15s, color 0.15s",
-                }}
-                className={isMenuOpen ? undefined : "file-collection-btn"}
+                className={`icon-btn${isMenuOpen ? "" : " file-collection-btn"}`}
+                style={isMenuOpen ? { color: "var(--accent-blue)" } : undefined}
               >
                 ＋
               </span>
 
               <span
-                className="file-delete-btn"
+                className="icon-btn danger file-delete-btn"
                 onClick={e => {
                   e.stopPropagation(); // 阻止冒泡，防止触发 switchFile
                   deleteFile(file.stem);
                 }}
                 title="删除"
-                style={{ fontSize: "13px", color: "#f44336", flexShrink: 0, opacity: 0, transition: "opacity 0.15s" }}
+                style={{ opacity: 0 }}
               >
                 ×
               </span>
@@ -221,7 +206,7 @@ export default function FileSidebar({
                 onChange={e => setNewCollectionName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") handleCreateCollection(file.stem); }}
                 placeholder="新集合名"
-                style={{ flex: 1, minWidth: 0, background: "#2d2d2d", border: "1px solid #3a3a3a", borderRadius: "3px", color: "#fff", padding: "3px 5px", fontSize: "10px", outline: "none" }}
+                style={{ flex: 1, minWidth: 0, background: "var(--bg-input)", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text)", padding: "3px 5px", fontSize: "10px", outline: "none" }}
               />
               <button
                 onClick={() => handleCreateCollection(file.stem)}
@@ -255,7 +240,7 @@ export default function FileSidebar({
       <div key={collection.id}>
         <div style={{ ...sectionTitleStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: colorOfCollection(collection), opacity: 0.9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            📚 {collection.name} ({items.length})
+            {collection.name} · {items.length}
           </span>
           {deletable && (
             <span
@@ -275,14 +260,15 @@ export default function FileSidebar({
   };
 
   return (
-    <div style={{ width: `${width}px`, background: "#1e1e1e", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
+    <div className="glass-panel panel-left" style={{ width: `${width}px`, display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       {/* 头部工具栏 */}
-      <div style={{ padding: "8px 10px", borderBottom: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "11px", color: "#888", fontWeight: "bold", letterSpacing: "0.5px" }}>📁 文件</span>
+      <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "11px", color: "#888", fontWeight: "bold", letterSpacing: "0.5px" }}>文件</span>
         <button
           onClick={() => { setIsCreatingFile(true); setNewFileName(""); }}
           title="新建文件"
-          style={{ background: "none", border: "1px solid #555", color: "#aaa", width: "20px", height: "20px", borderRadius: "3px", cursor: "pointer", fontSize: "14px", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          className="ghost-btn"
+          style={{ width: "22px", height: "22px", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", lineHeight: 1 }}
         >
           +
         </button>
@@ -290,7 +276,7 @@ export default function FileSidebar({
 
       {/* 新建文件输入框 */}
       {isCreatingFile && (
-        <div style={{ padding: "6px 8px", borderBottom: "1px solid #333" }}>
+        <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
           <input
             value={newFileName}
             onChange={e => setNewFileName(e.target.value)}
@@ -300,7 +286,7 @@ export default function FileSidebar({
             }}
             placeholder="文件名 (不含.cpp)"
             autoFocus
-            style={{ width: "100%", background: "#2d2d2d", border: "1px solid #007acc", borderRadius: "3px", color: "#fff", padding: "4px 6px", fontSize: "11px", outline: "none", boxSizing: "border-box" }}
+            style={{ width: "100%", background: "var(--bg-input)", border: "1px solid var(--accent-blue)", borderRadius: "3px", color: "var(--text)", padding: "4px 6px", fontSize: "11px", outline: "none", boxSizing: "border-box" }}
           />
         </div>
       )}
@@ -309,7 +295,7 @@ export default function FileSidebar({
       <div style={{ flex: 1, overflowY: "auto" }}>
         {favoriteFiles.length > 0 && (
           <>
-            <div style={{ ...sectionTitleStyle, color: "#f5c542", opacity: 0.9 }}>⭐ 收藏</div>
+            <div style={{ ...sectionTitleStyle, color: "#f5c542", opacity: 0.9 }}>收藏</div>
             {favoriteFiles.map(renderRow)}
           </>
         )}

@@ -26,6 +26,13 @@ pub fn init_resource_dir(dir: PathBuf) {
     let _ = RESOURCE_DIR.set(dir);
 }
 
+/// 首启解压出来的工具链目录（应用数据目录下）。
+static TOOLCHAIN_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn init_toolchain_dir(dir: PathBuf) {
+    let _ = TOOLCHAIN_DIR.set(dir);
+}
+
 fn resource_candidates(relative: &[&str]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(dir) = RESOURCE_DIR.get() {
@@ -51,8 +58,14 @@ pub fn compiler_exe_name() -> &'static str {
 pub fn bundled_compiler() -> Option<PathBuf> {
     let name = compiler_exe_name();
 
-    // 1) 打包后的资源目录（最可靠）
-    let mut candidates = resource_candidates(&["resources", "toolchain", "bin", name]);
+    // 1) 首启解压到数据目录的那份（新版走这里）
+    let mut candidates: Vec<PathBuf> = TOOLCHAIN_DIR
+        .get()
+        .map(|dir| vec![dir.join("bin").join(name)])
+        .unwrap_or_default();
+
+    // 2) 打包后的资源目录（老版本直接把目录塞进安装包时走这里）
+    candidates.extend(resource_candidates(&["resources", "toolchain", "bin", name]));
 
     // 2) 兜底：exe 旁边 / macOS .app 的 Resources / 开发期 cwd 下的 resources
     if let Ok(exe) = std::env::current_exe() {

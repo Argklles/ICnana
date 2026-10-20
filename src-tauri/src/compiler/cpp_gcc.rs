@@ -12,7 +12,7 @@ use crate::compiler::options::CompileOptions;
 该命名空间用于编译和运行单个cpp文件
 */
 
-/// 用默认参数编译（参数见 compiler/options.rs，默认 -std=c++14 -O2）。
+/// 用默认参数编译（参数见 compiler/options.rs，默认 -std=c++17 -O2）。
 pub fn compile_code(src: &Path, bin: &Path) -> Result<(), String> {
     compile_code_with(src, bin, &CompileOptions::from_env())
 }
@@ -58,7 +58,17 @@ pub fn compile_code_with_includes(
     Ok(())
 }
 
-pub fn run_binary(bin: &Path, input: &str) -> Result<String, String> {
+/// 跑一次样例。
+///
+/// - `time_limit_ms`：超时阈值，来自题目元数据
+/// - `memory_limit_mb`：内存上限。**目前只在 Windows 上强制**（Linux/macOS 忽略），
+///   超了直接杀掉并返回 MLE。
+pub fn run_binary(
+    bin: &Path,
+    input: &str,
+    time_limit_ms: u64,
+    memory_limit_mb: u64,
+) -> Result<String, String> {
     let mut child = create_hidden_command(bin.to_str().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -83,7 +93,13 @@ pub fn run_binary(bin: &Path, input: &str) -> Result<String, String> {
     });
 
     // 3. 核心：死循环检测雷达
-    let timeout_duration = Duration::from_secs(2); // 你可以自定义，通常 OJ 是 1 到 2 秒
+    let timeout_duration = Duration::from_millis(time_limit_ms.clamp(100, 600_000));
+    #[cfg(windows)]
+    let mem_limit_bytes = memory_limit_mb.saturating_mul(1024 * 1024);
+    #[cfg(windows)]
+    let pid = child.id();
+    #[cfg(not(windows))]
+    let _ = memory_limit_mb; // 非 Windows 暂不强制内存
     let start_time = Instant::now();
 
     loop {
@@ -94,6 +110,20 @@ pub fn run_binary(bin: &Path, input: &str) -> Result<String, String> {
                 break;
             }
             Ok(None) => {
+                // Windows 没有 setrlimit，这里轮询工作集内存；超了直接杀
+                #[cfg(windows)]
+                if mem_limit_bytes > 0 {
+                    if let Some(used) = win_mem::working_set_bytes(pid) {
+                        if used > mem_limit_bytes {
+                            let _ = child.kill();
+                            return Err(format!(
+                                "MLE (Memory Limit Exceeded): 超出 {} MB 限制",
+                                memory_limit_mb
+                            ));
+                        }
+                    }
+                }
+
                 // 进程还在跑，检查是否超过了容忍极限
                 if start_time.elapsed() > timeout_duration {
                     // 发现死循环或超时，直接无情击杀！
@@ -110,4 +140,99 @@ pub fn run_binary(bin: &Path, input: &str) -> Result<String, String> {
     // 4. 程序正常结束（在规定时间内），去通道里把抽水机抽好的真实输出拿出来
     let actual_output = rx.recv().unwrap_or_default();
     Ok(actual_output.trim().to_string())
+}
+
+/// Windows 专用：查询进程的工作集大小。
+///
+/// 没有用 Job Object（要额外依赖、还得管句柄生命周期），
+/// 直接调 psapi 的 GetProcessMemoryInfo，失败就当作「查不到」，
+/// 宁可不限制也不能让判题崩掉。
+#[cfg(windows)]
+mod win_mem {
+    use core::ffi::c_void;
+
+    #[repr(C)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        page_fault_count: u32,
+        peak_working_set_size: usize,
+        working_set_size: usize,
+        quota_peak_paged_pool_usage: usize,
+        quota_paged_pool_usage: usize,
+        quota_peak_non_paged_pool_usage: usize,
+        quota_non_paged_pool_usage: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    #[link(name = "psapi")]
+    extern "system" {
+        fn GetProcessMemoryInfo(
+            process: *mut c_void,
+            counters: *mut ProcessMemoryCounters,
+            cb: u32,
+        ) -> i32;
+    }
+
+    // PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
+    const ACCESS: u32 = 0x0400 | 0x0010;
+
+    pub fn working_set_bytes(pid: u32) -> Option<u64> {
+        unsafe {
+            let handle = OpenProcess(ACCESS, 0, pid);
+            if handle.is_null() {
+                return None;
+            }
+
+            let mut counters: ProcessMemoryCounters = core::mem::zeroed();
+            counters.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
+
+            let ok = GetProcessMemoryInfo(handle, &mut counters, counters.cb);
+            CloseHandle(handle);
+
+            if ok == 0 {
+                None
+            } else {
+                Some(counters.working_set_size as u64)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compiler::options::CompileOptions;
+
+    fn build(name: &str, code: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join("icnana-run-binary-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join(format!("{name}.cpp"));
+        let bin = dir.join(name);
+        std::fs::write(&src, code).unwrap();
+        compile_code_with(&src, &bin, &CompileOptions::from_settings(None)).expect("编译失败");
+        (src, bin)
+    }
+
+    #[test]
+    fn runs_and_returns_stdout() {
+        let (_, bin) = build(
+            "sum",
+            "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b;return 0;}",
+        );
+        assert_eq!(run_binary(&bin, "1 2", 2000, 256).unwrap(), "3");
+    }
+
+    #[test]
+    fn tle_respects_the_given_limit() {
+        let (_, bin) = build("spin", "int main(){volatile long long x=0;while(true)x++;}");
+        let err = run_binary(&bin, "", 300, 256).unwrap_err();
+        assert!(err.starts_with("TLE"), "应该是 TLE，实际: {err}");
+    }
 }

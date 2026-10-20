@@ -221,6 +221,29 @@ pub fn set_problem_type(stem: String, problem_type: String) -> Result<(), String
     fs::write(&path, text).map_err(|e| format!("写入题目信息失败: {e}"))
 }
 
+/// 改题目的时间 / 内存限制（评测和界面都读这两个值）
+#[tauri::command]
+pub fn set_problem_limits(stem: String, time_limit: u64, memory_limit: u64) -> Result<(), String> {
+    if time_limit == 0 || time_limit > 600_000 {
+        return Err("时间限制要在 1 ~ 600000 ms 之间".to_string());
+    }
+    if memory_limit == 0 || memory_limit > 65536 {
+        return Err("内存限制要在 1 ~ 65536 MB 之间".to_string());
+    }
+
+    let path = ic_fs::workspace_question(&stem);
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取题目信息失败: {e}"))?;
+    let mut value: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("解析题目信息失败: {e}"))?;
+
+    value["timeLimit"] = serde_json::json!(time_limit);
+    value["memoryLimit"] = serde_json::json!(memory_limit);
+
+    let text = serde_json::to_string_pretty(&value)
+        .map_err(|e| format!("序列化题目信息失败: {e}"))?;
+    fs::write(&path, text).map_err(|e| format!("写入题目信息失败: {e}"))
+}
+
 #[tauri::command]
 pub fn delete_workspace_file(filename: String) -> Result<(), String> {
     let p = ic_fs::workspace_dir().join(&filename);

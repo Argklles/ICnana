@@ -1,17 +1,51 @@
-/* ── 统一色板 ────────────────────────────────────────── */
+/* ── 统一色板：蓝粉渐变做底，面板是深色玻璃 ─────────── */
 :root {
-  --bg-app: #1a1a1a;
-  --bg-panel: #1e1e1e;
-  --bg-elevated: #252526;
-  --bg-input: #2d2d33;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --border: #333;
-  --border-strong: #444;
-  --text: #d4d4d4;
-  --text-dim: #8a8a8a;
-  --text-faint: #666;
-  --accent: #40b864;
-  --accent-blue: #82aaff;
+  /* 基础层：整个窗口就是蓝粉渐变 */
+  --base-gradient: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-pink) 100%);
+
+  /* 面板：半透明深色玻璃，透出底层渐变 */
+  --glass-bg: rgba(10, 10, 18, 0.55);
+  --ide-bg: rgba(16, 16, 26, 0.90);      /* IDE 比侧栏更实、更亮一点 */
+
+  /* 底色/输入/悬停 */
+  --bg-app: transparent;
+  --bg-panel: var(--glass-bg);
+  --bg-elevated: rgba(255, 255, 255, 0.07);
+  --bg-input: rgba(255, 255, 255, 0.08);
+  --bg-hover: rgba(255, 255, 255, 0.10);
+
+  /* 边框 */
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.24);
+
+  /* 文字 */
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.72);
+  --text-faint: rgba(255, 255, 255, 0.52);
+
+  /* 强调色：蓝 → 粉 */
+  --accent-blue: #6ea8fe;
+  --accent-pink: #f78fb3;
+  --accent: #6ea8fe;
+  --accent-gradient: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-pink) 100%);
+
+  /* 形状 */
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  /* 背景图（设置里可换） */
+  --app-bg-image: none;
+
+  /* 下面几项由设置页的「外观」控制 */
+  --scrim-alpha: 0.28;        /* 整体压暗，越大文字越清楚 */
+  --glass-rgb: 10 10 18;      /* 玻璃底色（配色板决定） */
+  --glass-gradient: none;     /* 启用渐变时由设置覆盖 */
+  --glass-alpha: 0.45;        /* 玻璃不透明度 */
+  --glass-blur: 20;           /* 雾化半径(px) */
+  --glass-saturate: 1.44;     /* 保真度映射出来的饱和度 */
+  --bg-image-opacity: 1;      /* 背景图不透明度 */
+  --panel-left-radius: 0 10px 10px 0;
+  --panel-right-radius: 10px 0 0 10px;
 }
 
 * {
@@ -29,9 +63,29 @@
 }
 
 body {
-  background: #1a1a1a;
-  color: #d4d4d4;
+  background-color: #000000;
+  background-image: var(--base-gradient);
+  color: var(--text);
   overflow: hidden;
+}
+
+/* 自定义背景图：单独铺一层并压暗，保证前景文字可读 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: var(--app-bg-image);
+  background-size: cover;
+  background-position: center;
+  opacity: var(--bg-image-opacity, 1);
+  filter: brightness(0.88);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 /* 文件列表项 hover */
@@ -223,14 +277,14 @@ button {
   display: flex;
   gap: 4px;
   padding: 6px 10px;
-  background: rgba(20, 20, 25, 0.8);
+  background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
 
 .editor-tab {
   background: transparent;
-  color: var(--text-dim);
+  color: rgba(255, 255, 255, 0.55);
   border: none;
   padding: 6px 14px;
   border-radius: 6px;
@@ -245,9 +299,10 @@ button {
 }
 
 .editor-tab.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* ── 底部运行按钮 ─────────────────────────────────── */
@@ -266,4 +321,204 @@ button {
 
 .run-button:hover {
   filter: brightness(1.1);
+}
+
+/* ── 蓝粉渐变边框（用 padding-box / border-box 双背景实现） ── */
+.gradient-border {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(var(--bg-panel), var(--bg-panel)) padding-box,
+    var(--accent-gradient) border-box !important;
+  border-radius: var(--radius);
+}
+
+/* ── 左右两侧的毛玻璃面板（中间 IDE 作为实底）──────────── */
+.glass-panel {
+  background-color: rgb(var(--glass-rgb) / var(--glass-alpha));
+  background-image: var(--glass-gradient, none);
+  backdrop-filter: blur(calc(var(--glass-blur) * 1px)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1px)) saturate(var(--glass-saturate));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+}
+
+/* 顶栏同样走渐变 */
+.top-bar {
+  background-color: rgb(var(--glass-rgb) / var(--glass-alpha));
+  background-image: var(--glass-gradient, none);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-panel .file-item:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* 拖拽分隔条：平时隐形，悬停才给一点存在感 */
+.resize-divider {
+  transition: background 0.15s;
+}
+.resize-divider:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* 标题栏：自己一层玻璃，和侧栏分开控制 */
+.titlebar {
+  background-color: rgb(var(--titlebar-rgb) / var(--titlebar-alpha));
+  backdrop-filter: blur(calc(var(--titlebar-blur) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--titlebar-blur) * 1px));
+}
+
+/* 贴边的面板只用内侧两角是圆的 */
+.panel-left {
+  border-radius: var(--panel-left-radius) !important;
+}
+
+.panel-right {
+  border-radius: var(--panel-right-radius) !important;
+}
+
+/* IDE 面板：不要边框感，融进背景 */
+/* 代码区和壁纸完全对齐：不铺任何色，可读性交给全局压暗层 */
+.ide-panel {
+  background: transparent;
+}
+
+
+/* 壁纸透上来时给文字一点阴影，比整块压黑更自然 */
+/* 手动对答的控制台：不要黑框，文字加和代码一样的描边 */
+.console-body {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, var(--code-shadow, 0.75)),
+    0 0 1px rgba(0, 0, 0, calc(var(--code-shadow, 0.75) * 0.66));
+}
+
+.monaco-editor .view-lines {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, var(--code-shadow, 0.75)),
+    0 0 1px rgba(0, 0, 0, calc(var(--code-shadow, 0.75) * 0.66));
+}
+
+/* Monaco 自己会画一层不透明底色，这里强制让出来 */
+.monaco-editor,
+.monaco-editor .overflow-guard,
+.monaco-editor-background,
+.monaco-editor .margin,
+.monaco-editor .inputarea.ime-input {
+  background: transparent !important;
+}
+
+
+/* ── 文件行的小图标按钮（收藏 / 加集合 / 删除）────── */
+.icon-btn {
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; font-size: 12px; line-height: 1; cursor: pointer;
+  color: rgba(255, 255, 255, 0.45);
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.icon-btn.star-on { color: var(--accent-pink); }
+.icon-btn.danger:hover { background: rgba(255, 86, 87, 0.25); color: #ff9b93; }
+
+/* ── 幽灵按钮（添加 / 新建等次要操作）─────────────── */
+.ghost-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ghost-btn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+}
+
+/* 压暗层：严格夹在「壁纸」和「侧栏/代码区」之间，只控制暗度，不带颜色。
+   高度跟着内容区走，和两个侧栏一致（标题栏不铺）。 */
+.content-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, var(--scrim-alpha));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── 设置里的滑块：底轨 + 填充层 + 透明 input ── */
+.range-wrap {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  display: flex;
+  align-items: center;
+}
+
+.range-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.range-fill {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-pink));
+  pointer-events: none;
+  transition: width 0.05s linear;
+}
+
+input[type="range"].range {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].range::-webkit-slider-runnable-track {
+  height: 18px;
+  background: transparent;
+}
+
+/* 不要白点：圆点透明，只留填充条本身 */
+input[type="range"].range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+input[type="range"].range::-moz-range-track {
+  height: 18px;
+  background: transparent;
+}
+
+input[type="range"].range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
 }

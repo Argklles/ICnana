@@ -1,14 +1,16 @@
 {
   "name": "icnana",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:linux": "tauri build -- --bundles deb,rpm"
+    "build:linux": "tauri build -- --bundles deb,rpm",
+    "version:bump": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/bump-version.mjs --check"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

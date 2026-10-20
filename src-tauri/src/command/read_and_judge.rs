@@ -9,6 +9,25 @@ use std::path::PathBuf;
 use crate::compiler::interactive::run_interactive;
 use std::time::Duration;
 
+/// 题目元数据没写限制时的兜底值
+pub const DEFAULT_TIME_LIMIT: u64 = 2000;
+pub const DEFAULT_MEMORY_LIMIT: u64 = 256;
+
+/// 从 question.json 里读出时间 / 内存限制，缺字段用兜底值
+pub fn limits_from_question(q: &serde_json::Value) -> (u64, u64) {
+    let time = q
+        .get("timeLimit")
+        .and_then(|v| v.as_u64())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_TIME_LIMIT);
+    let memory = q
+        .get("memoryLimit")
+        .and_then(|v| v.as_u64())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_MEMORY_LIMIT);
+    (time, memory)
+}
+
 /*
 该命名空间与cpp文件的读取与样例的judge相关
 */
@@ -30,6 +49,11 @@ pub async fn judge_all(
         return cases;
     }
 
+    let (time_limit, memory_limit) = ic_fs::get_workspace_question(filename.clone())
+        .ok()
+        .map(|q| limits_from_question(&q))
+        .unwrap_or((DEFAULT_TIME_LIMIT, DEFAULT_MEMORY_LIMIT));
+
     let src = ic_fs::workspace_cpp(&filename);
     let bin_name = filename.trim_end_matches(".cpp").to_string();
     let bin = ic_fs::workspace_bin(&bin_name);
@@ -43,7 +67,7 @@ pub async fn judge_all(
     }
 
     for case in &mut cases {
-        match run_binary(&bin, &case.input) {
+        match run_binary(&bin, &case.input, time_limit, memory_limit) {
             Ok(actual_out) => {
                 case.actual = actual_out.clone();
                 // 验证实际输出和期望输出是否一致
@@ -54,8 +78,14 @@ pub async fn judge_all(
                 }
             }
             Err(run_err) => {
-                // 如果运行过程出错（如超时、无法启动等）
-                case.status = "error".to_string();
+                // 超时 / 超内存单独标出来，红字和普通报错区分开
+                case.status = if run_err.starts_with("TLE") {
+                    "tle".to_string()
+                } else if run_err.starts_with("MLE") {
+                    "mle".to_string()
+                } else {
+                    "error".to_string()
+                };
                 case.actual = run_err;
             }
         }
@@ -209,5 +239,31 @@ pub async fn judge_interactive(
         status: outcome.status,
         message: outcome.message,
         transcript: outcome.transcript,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn reads_limits_from_meta() {
+        let q = json!({ "timeLimit": 3000, "memoryLimit": 512 });
+        assert_eq!(limits_from_question(&q), (3000, 512));
+    }
+
+    #[test]
+    fn falls_back_when_missing_or_zero() {
+        assert_eq!(limits_from_question(&json!({})), (DEFAULT_TIME_LIMIT, DEFAULT_MEMORY_LIMIT));
+        assert_eq!(
+            limits_from_question(&json!({ "timeLimit": 0, "memoryLimit": 0 })),
+            (DEFAULT_TIME_LIMIT, DEFAULT_MEMORY_LIMIT)
+        );
+        // 只有一半字段时，另一半走默认
+        assert_eq!(
+            limits_from_question(&json!({ "timeLimit": 1500 })),
+            (1500, DEFAULT_MEMORY_LIMIT)
+        );
     }
 }

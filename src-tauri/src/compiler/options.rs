@@ -11,8 +11,9 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 
-/// 默认 C++ 标准：与洛谷默认语言、NOI Linux 2.0 保持一致。
-pub const DEFAULT_STD: &str = "c++14";
+/// 默认 C++ 标准：C++17 是现在大多数 OJ / 比赛的主流档位，
+/// 也能覆盖洛谷（GCC 15.3）和 Codeforces（GCC 14.2）的常规用法。
+pub const DEFAULT_STD: &str = "c++17";
 
 /// 默认优化等级。评测机默认开 O2，本地不开会让选手误判常数与复杂度。
 pub const DEFAULT_OPT: &str = "O2";
@@ -32,7 +33,7 @@ pub struct CompileSettings {
 
 #[derive(Debug, Clone)]
 pub struct CompileOptions {
-    /// 例如 `c++14`
+    /// 例如 `c++17`
     pub std: String,
     /// 只有优化等级，例如 `O2`（拼成 `-O2`）
     pub opt: String,
@@ -115,7 +116,9 @@ impl CompileOptions {
     }
 
     fn common_args(&self) -> Vec<String> {
-        let mut args = vec![format!("-std={}", self.std), format!("-O{}", self.opt)];
+        // opt 既可能是 "2" 也可能是 "O2"，统一归一化后再拼，避免出现 -OO2
+        let opt = Self::normalize_opt(&self.opt).unwrap_or_else(|| "2".to_string());
+        let mut args = vec![format!("-std={}", self.std), format!("-O{opt}")];
         if self.warnings {
             args.push("-Wall".to_string());
         }

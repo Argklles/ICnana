@@ -81,7 +81,7 @@ jobs:
       - name: 安装前端依赖
         run: npm install
 
-      - name: 下载并内置 MinGW 工具链（GCC 15）
+      - name: 准备内置 MinGW 工具链（GCC 15）
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -97,20 +97,13 @@ jobs:
           if (-not $asset) { throw "没有找到合适的 7z 资产（x86_64 / posix / ucrt / 不含 LLVM）" }
 
           Write-Host "下载 $($asset.name)（$([math]::Round($asset.size/1MB)) MB）"
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile toolchain.7z
-
-          7z x toolchain.7z -o"toolchain-tmp" -y | Out-Null
-          $root = Get-ChildItem toolchain-tmp -Directory | Select-Object -First 1
-
           New-Item -ItemType Directory -Force -Path "src-tauri/resources/toolchain" | Out-Null
-          Copy-Item "$($root.FullName)\*" "src-tauri/resources/toolchain" -Recurse -Force
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "src-tauri/resources/toolchain/toolchain.7z"
 
-          # 精简：调试器和文档对刷题没用
-          Remove-Item "src-tauri/resources/toolchain\share" -Recurse -Force -ErrorAction SilentlyContinue
-          Get-ChildItem "src-tauri/resources/toolchain\bin" -Filter "*gdb*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-
-          $mb = (Get-ChildItem "src-tauri/resources/toolchain" -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
-          Write-Host ("工具链体积: {0:N1} MB" -f $mb)
+          # 不再解压进安装包：只放这一个 7z，首次启动时由应用解压到数据目录。
+          # 这样安装包从 ~150MB 降到 ~15MB，打包也从十几分钟降到一两分钟。
+          $mb = (Get-Item "src-tauri/resources/toolchain/toolchain.7z").Length / 1MB
+          Write-Host ("工具链压缩包: {0:N1} MB" -f $mb)
 
       - name: 打包 Windows（msi + nsis）
         run: npm run tauri build -- --bundles msi,nsis

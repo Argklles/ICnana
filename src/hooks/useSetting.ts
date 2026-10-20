@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DEFAULT_COMPILE_SETTINGS, DEFAULT_TEMPLATE } from "../config/constants"
+import { DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, TAB_SHORTCUTS } from "../config/constants"
 import { CompileSettings } from "../config/types"
+import type { TabShortcut } from "../config/constants"
 
 // 把模板同步给后端：拉取题面时后端要用它拼「题目信息 + 代码模板」写入 main.cpp
 function syncTemplateToBackend(template: string) {
@@ -42,6 +43,8 @@ export function useSetting() {
     const [codeTemplate, setCodeTemplate] = useState(DEFAULT_TEMPLATE);
     const [indentSize, setIndentSize] = useState<2 | 4>(2);
     const [compileSettings, setCompileSettings] = useState<CompileSettings>(DEFAULT_COMPILE_SETTINGS);
+    const [tabShortcut, setTabShortcut] = useState<TabShortcut>(DEFAULT_TAB_SHORTCUT);
+    const [editingShortcut, setEditingShortcut] = useState<TabShortcut>(DEFAULT_TAB_SHORTCUT);
 
     // 编辑中的副本：点“保存”才写回，点“取消”直接丢弃
     const [editingTemplate, setEditingTemplate] = useState(DEFAULT_TEMPLATE);
@@ -70,6 +73,12 @@ export function useSetting() {
             setIndentSize(v); setEditingIndent(v);
         }
 
+        const savedShortcut = localStorage.getItem("icnana_tab_shortcut");
+        if (savedShortcut && TAB_SHORTCUTS.some(s => s.key === savedShortcut)) {
+            setTabShortcut(savedShortcut as TabShortcut);
+            setEditingShortcut(savedShortcut as TabShortcut);
+        }
+
         const loadedCompile = loadCompileSettings();
         setCompileSettings(loadedCompile);
         setEditingCompile(loadedCompile);
@@ -80,6 +89,8 @@ export function useSetting() {
         setCodeTemplate(editingTemplate);
         setIndentSize(editingIndent);
         setCompileSettings(editingCompile);
+        setTabShortcut(editingShortcut);
+        localStorage.setItem("icnana_tab_shortcut", editingShortcut);
 
         localStorage.setItem("icnana_code_template", editingTemplate);
         localStorage.setItem("icnana_indent_size", String(editingIndent));
@@ -93,6 +104,7 @@ export function useSetting() {
         setEditingTemplate(DEFAULT_TEMPLATE);
         setEditingIndent(2);
         setEditingCompile(DEFAULT_COMPILE_SETTINGS);
+        setEditingShortcut(DEFAULT_TAB_SHORTCUT);
     };
 
     // 每次打开面板都从已保存的值同步一份草稿，避免上次“取消”的编辑残留
@@ -100,6 +112,7 @@ export function useSetting() {
         setEditingTemplate(codeTemplate);
         setEditingIndent(indentSize);
         setEditingCompile(compileSettings);
+        setEditingShortcut(tabShortcut);
         setShowSettings(true);
     };
 
@@ -109,6 +122,8 @@ export function useSetting() {
         codeTemplate, setCodeTemplate,
         indentSize, setIndentSize,
         compileSettings, setCompileSettings,
+        tabShortcut, setTabShortcut,
+        editingShortcut, setEditingShortcut,
         editingTemplate, setEditingTemplate,
         editingIndent, setEditingIndent,
         editingCompile, setEditingCompile,

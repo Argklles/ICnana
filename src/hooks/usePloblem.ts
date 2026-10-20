@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 // 记得引入你之前定义的类型
-import { TestCase, WorkspaceFile } from "../config/types"; 
+import { TestCase, WorkspaceFile } from "../config/types";
+import { useTauriEvent } from "./useTauriEvent";
 
 // 🎯 核心概念：因为你的 handleMergeToCurrent 需要用到 activeFile 等数据
 // 这些数据属于 useWorkspace，所以我们需要通过参数把它们传进这个 Hook 里
@@ -19,19 +19,11 @@ export function useProblem({ activeFile, switchFile, setTestCases, setFiles, ref
   // 1️⃣ 状态必须声明在函数内部！
   const [incomingProblem, setIncomingProblem] = useState<string | null>(null);
 
-  // 2️⃣ 监听事件必须包裹在 useEffect 中
-  useEffect(() => {
-    const unlistenPromise = listen<string>("oj_problem_received", (event) => {
-      const newStem = event.payload; 
-      console.log("🎉 插件发来新题目了喵！等待用户决定:", newStem);
-      setIncomingProblem(newStem); // 触发弹窗
-    });
-
-    // 清理函数
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, []); // 依赖项为空，表示只在组件挂载时监听一次
+  // 2️⃣ 监听「有新题目」事件（useTauriEvent 内部处理了 StrictMode 的重复订阅）
+  useTauriEvent<string>("oj_problem_received", (stem) => {
+    console.log("🎉 插件发来新题目了喵！等待用户决定:", stem);
+    setIncomingProblem(stem); // 触发弹窗
+  });
 
   // 3️⃣ 你的处理函数们
   const handleOpenNewPage = async (stem: string) => {

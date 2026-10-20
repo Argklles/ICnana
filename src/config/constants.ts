@@ -25,6 +25,18 @@ export const DEFAULT_COMPILE_SETTINGS: CompileSettings = {
   marchNative: false,
 };
 
+// 切换 代码/题面/交互器 的快捷键预设
+export const TAB_SHORTCUTS = [
+  { key: "alt-arrow", label: "Alt + ← / →" },
+  { key: "alt-number", label: "Alt + 1 / 2 / 3" },
+  { key: "ctrl-tab", label: "Ctrl + Tab" },
+  { key: "off", label: "关闭" },
+] as const;
+
+export type TabShortcut = (typeof TAB_SHORTCUTS)[number]["key"];
+
+export const DEFAULT_TAB_SHORTCUT: TabShortcut = "alt-arrow";
+
 // 内置收藏夹的固定 id，与后端 collections.rs 的 FAVORITES_ID 保持一致
 export const FAVORITES_ID = "favorites";
 

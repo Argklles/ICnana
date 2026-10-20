@@ -148,7 +148,8 @@ fn drain<R: Read + Send + 'static>(
 // ───────────────────── testlib 的 argv[2] 通道 ─────────────────────
 
 enum Channel {
-    /// Unix 命名管道：写多少读多少，天然流式
+    /// Unix 命名管道：写多少读多少，天然流式（Windows 上不会构造）
+    #[cfg_attr(not(unix), allow(dead_code))]
     Fifo(PathBuf),
     /// Windows 没有 FIFO，用文件 + 轮询追读
     TailFile(PathBuf),

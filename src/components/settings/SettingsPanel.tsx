@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CompileSettings, CompilerInfo } from "../../config/types";
-import { OPT_CHOICES, STD_CHOICES } from "../../config/constants";
+import { OPT_CHOICES, STD_CHOICES, TAB_SHORTCUTS } from "../../config/constants";
+import type { TabShortcut } from "../../config/constants";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ interface SettingsPanelProps {
   setEditingIndent: (v: 2 | 4) => void;
   editingCompile: CompileSettings;
   setEditingCompile: (v: CompileSettings) => void;
+  editingShortcut: TabShortcut;
+  setEditingShortcut: (v: TabShortcut) => void;
 }
 
 const overlayStyle: CSSProperties = {
@@ -67,6 +70,7 @@ export default function SettingsPanel({
   editingTemplate, setEditingTemplate,
   editingIndent, setEditingIndent,
   editingCompile, setEditingCompile,
+  editingShortcut, setEditingShortcut,
 }: SettingsPanelProps) {
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
@@ -226,6 +230,18 @@ export default function SettingsPanel({
               >
                 <option value={2}>2 空格</option>
                 <option value={4}>4 空格</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>切换 代码 / 题面 / 交互器</label>
+              <select
+                style={fieldStyle_withe}
+                value={editingShortcut}
+                onChange={(e) => setEditingShortcut(e.target.value as TabShortcut)}
+              >
+                {TAB_SHORTCUTS.map(item => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
               </select>
             </div>
           </div>

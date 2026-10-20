@@ -1,3 +1,19 @@
+/* ── 统一色板 ────────────────────────────────────────── */
+:root {
+  --bg-app: #1a1a1a;
+  --bg-panel: #1e1e1e;
+  --bg-elevated: #252526;
+  --bg-input: #2d2d33;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --border: #333;
+  --border-strong: #444;
+  --text: #d4d4d4;
+  --text-dim: #8a8a8a;
+  --text-faint: #666;
+  --accent: #40b864;
+  --accent-blue: #82aaff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -200,4 +216,54 @@ button {
   border-radius: 6px;
   overflow: auto;
   border: 1px solid #444c56;
+}
+
+/* ── 编辑器顶部标签栏 ─────────────────────────────── */
+.editor-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  background: rgba(20, 20, 25, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.editor-tab {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.editor-tab:hover {
+  background: var(--bg-hover);
+  color: #cfcfcf;
+}
+
+.editor-tab.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── 底部运行按钮 ─────────────────────────────────── */
+.run-button {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: filter 0.15s;
+}
+
+.run-button:hover {
+  filter: brightness(1.1);
 }

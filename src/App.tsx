@@ -166,6 +166,7 @@ export default function App() {
             problemMarkdown={workspace.problemMarkdown} testCases={workspace.testCases} setTestCases={workspace.setTestCases}
             setProblemMeta={workspace.setProblemMeta}
             compileSettings={setting.compileSettings}
+            tabShortcut={setting.tabShortcut}
           />
 
           <div className="resize-divider" onMouseDown={e => { draggingTest.current = true; dragStartX.current = e.clientX; dragStartW.current = testPanelWidth; document.body.style.cursor = "col-resize"; }} style={{ width: "5px", background: "#2d2d2d", cursor: "col-resize", zIndex: 5 }} />
@@ -210,6 +211,8 @@ export default function App() {
           setEditingIndent={setting.setEditingIndent}
           editingCompile={setting.editingCompile}
           setEditingCompile={setting.setEditingCompile}
+          editingShortcut={setting.editingShortcut}
+          setEditingShortcut={setting.setEditingShortcut}
         />
       )}
     </div>

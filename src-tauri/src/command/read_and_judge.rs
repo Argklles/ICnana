@@ -9,9 +9,6 @@ use std::path::PathBuf;
 use crate::compiler::interactive::run_interactive;
 use std::time::Duration;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 /*
 该命名空间与cpp文件的读取与样例的judge相关
 */

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { DEFAULT_FAVORITES } from "../config/constants"; // 确保你建了这个文件
 import { Favorite, HistoryEntry } from "../config/types";
+import { useTauriEvent } from "./useTauriEvent";
 
 export function useBrowser() {
   const [ojUrl, setOjUrl] = useState<string>("https://codeforces.com/problemset/problem/4/A");
@@ -26,26 +26,18 @@ export function useBrowser() {
   }, []);
 
   // 监听后端发来的 URL 变化事件
-  useEffect(() => {
-    let unlistenUrl: () => void;
-    const setup = async () => {
-      unlistenUrl = await listen("oj_url_changed", (event: any) => {
-        const newUrl = (event.payload as string).split("#")[0];
-        if (!newUrl.startsWith("http")) return; // 过滤 about:blank
-        
-        setOjUrl(newUrl);
-        setBrowserHistory(prev => {
-          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-          const entry: HistoryEntry = { url: newUrl, timestamp: Date.now() };
-          const updated = [entry, ...prev.filter(h => h.url !== newUrl && h.timestamp > thirtyDaysAgo)].slice(0, 500);
-          localStorage.setItem("oj_history", JSON.stringify(updated));
-          return updated;
-        });
-      });
-    };
-    setup();
-    return () => { if (unlistenUrl) unlistenUrl(); };
-  }, []);
+  useTauriEvent<string>("oj_url_changed", (payload) => {
+    const newUrl = payload.split("#")[0];
+    if (!newUrl.startsWith("http")) return; // 过滤 about:blank
+
+    setOjUrl(newUrl);
+    setBrowserHistory(prev => {
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      return [...prev, { url: newUrl, timestamp: Date.now() }]
+        .filter(h => h.timestamp >= thirtyDaysAgo)
+        .slice(-100);
+    });
+  });
 
   // 收藏夹操作
   const addFavorite = (name: string, url: string) => {

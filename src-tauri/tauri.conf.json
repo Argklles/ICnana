@@ -55,6 +55,11 @@
           "gcc-c++"
         ]
       }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

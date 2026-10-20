@@ -34,3 +34,7 @@ src-tauri/.oj_cookies_data/
 # 沙箱里用来缓存的 cargo home（不该进仓库）
 .cargo-home/
 .testdata/
+
+# 开发时的本地数据（工作区 / 工具链 / WebView 缓存）
+.devdata/
+.toolchain/

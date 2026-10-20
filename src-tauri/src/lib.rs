@@ -6,8 +6,40 @@ pub mod compiler;
 pub mod oj;
 pub mod utils;
 
+/// 开发模式下的项目根目录（src-tauri 的上一级）
+fn dev_repo_root() -> Option<std::path::PathBuf> {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest.parent().map(|p| p.to_path_buf())
+}
+
+/// 目录能不能写：试着建一个探针文件再删掉。
+/// 用来判断「绿色版」可行不可行——Program Files / /usr/lib 这种写不了。
+fn dir_is_writable(dir: &std::path::Path) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    let probe = dir.join(".icnana-write-test");
+    match std::fs::write(&probe, b"1") {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ── 开发模式：把 WebView 的缓存 / cookies / localStorage 也收进项目目录 ──
+    // （必须在创建窗口之前设置，WebKit 只在初始化时读一次）
+    if cfg!(debug_assertions) {
+        if let Some(root) = dev_repo_root() {
+            if std::env::var_os("XDG_DATA_HOME").is_none() {
+                std::env::set_var("XDG_DATA_HOME", root.join(".devdata"));
+            }
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -16,12 +48,43 @@ pub fn run() {
                 compiler::hidden_cmd::init_resource_dir(resource_dir);
             }
 
-            // ── 数据目录：固定到系统的 app data，不再依赖启动时的 cwd ──
+            // ── 数据目录 ──
+            // 优先级：环境变量 > 开发模式的仓库目录 > exe 旁边（绿色版） > 系统 app data
+            // 小工具按绿色软件处理更符合直觉：解压到哪，数据就在哪。
+            // Program Files / /usr/lib 这类只读目录写不了，才回落到 app data。
             let data_root = app
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from(".."));
-            let workspace = data_root.join("workspace");
+
+            let (portable_root, workspace) = {
+                let exe_dir = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+                let from_env = std::env::var("ICNANA_WORKSPACE")
+                    .ok()
+                    .filter(|v| !v.trim().is_empty())
+                    .map(std::path::PathBuf::from);
+
+                if let Some(dir) = from_env {
+                    (None, dir)
+                } else if cfg!(debug_assertions) {
+                    match dev_repo_root() {
+                        Some(root) => (Some(root.clone()), root.join("workspace")),
+                        None => (None, data_root.join("workspace")),
+                    }
+                } else {
+                    let usable = exe_dir.filter(|d| dir_is_writable(d));
+                    match usable {
+                        Some(dir) => {
+                            println!("🧳 绿色模式：数据放在程序目录（{}）", dir.display());
+                            (Some(dir.clone()), dir.join("workspace"))
+                        }
+                        None => (None, data_root.join("workspace")),
+                    }
+                }
+            };
 
             if let Err(e) = std::fs::create_dir_all(&workspace) {
                 eprintln!("⚠️ 创建工作区目录失败: {e}（{}）", workspace.display());
@@ -29,16 +92,33 @@ pub fn run() {
             utils::ic_fs::init_workspace_root(workspace.clone());
             println!("📂 工作区目录: {}", workspace.display());
 
+            // 切到绿色模式后，把以前存在 app data 里的数据搬过来（只搬一次）
+            if portable_root.is_some() {
+                let legacy_root = data_root.join("workspace");
+                if let Some(count) = utils::ic_fs::migrate_from(&legacy_root, &workspace) {
+                    println!("🧳 已把 app data 里的 {count} 个题目搬到程序目录");
+                }
+            }
+
             // 老版本把数据放在 cwd 旁边的 ../workspace，第一次升级时搬过来
             if let Some(count) = utils::ic_fs::migrate_legacy_workspace(&workspace) {
                 println!("📦 已从旧目录迁移 {count} 个题目文件夹");
             }
 
             // ── 内置工具链：放数据目录，首次启动时从资源里的 7z 解压 ──
-            let toolchain_dir = workspace
-                .parent()
-                .map(|p| p.join("toolchain"))
-                .unwrap_or_else(|| workspace.join("toolchain"));
+            let toolchain_dir = match (&portable_root, cfg!(debug_assertions)) {
+                // 绿色版：工具链也放程序目录旁边，整个目录可以拷走
+                (Some(root), false) => root.join("toolchain"),
+                // 开发模式
+                (_, true) => dev_repo_root()
+                    .map(|r| r.join(".toolchain"))
+                    .unwrap_or_else(|| workspace.join("toolchain")),
+                // 常规安装：数据目录旁边
+                (None, false) => workspace
+                    .parent()
+                    .map(|p| p.join("toolchain"))
+                    .unwrap_or_else(|| workspace.join("toolchain")),
+            };
             compiler::hidden_cmd::init_toolchain_dir(toolchain_dir.clone());
 
             let handle = app.handle().clone();

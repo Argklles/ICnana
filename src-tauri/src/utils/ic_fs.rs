@@ -46,7 +46,13 @@ fn copy_dir_all(from: &Path, to: &Path) -> std::io::Result<()> {
 /// 一次性迁移：把老版本留在 cwd 旁边的 `../workspace` 搬到新的数据目录。
 /// 只有目标目录为空时才搬，避免覆盖用户已经在新目录里的数据。
 pub fn migrate_legacy_workspace(target: &Path) -> Option<usize> {
-    let legacy = PathBuf::from("../workspace");
+    migrate_from(Path::new("../workspace"), target)
+}
+
+/// 把 `source` 里的内容搬到 `target`（target 为空时才搬）。
+/// 用于：老版本的工作区迁移、以及「从 app data 切到绿色模式」时的一次性搬家。
+pub fn migrate_from(source: &Path, target: &Path) -> Option<usize> {
+    let legacy = source.to_path_buf();
     if !legacy.is_dir() {
         return None;
     }

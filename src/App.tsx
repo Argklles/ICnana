@@ -18,7 +18,10 @@ import { usePanelResize } from "./hooks/usePanelResize";
 import ProblemArrivalModal from "./components/ProblemArrivalModal";
 import EditorArea from "./components/workspace/EditorArea";
 import TestPanel from "./components/workspace/TestPanel";
-import SettingsPanel from "./components/settings/SettingsPanel";
+import { lazy, Suspense } from "react";
+
+// 设置面板很大，按需加载
+const SettingsPanel = lazy(() => import("./components/settings/SettingsPanel"));
 
 export default function App() {
   // ── 全局布局状态 ──
@@ -71,11 +74,10 @@ export default function App() {
         onSelectTab={(key) => setActiveTab(key as TabType)}
         settingsOpen={setting.showSettings}
         onToggleSettings={() => (setting.showSettings ? setting.setShowSettings(false) : setting.openSettings())}
-        useSystemTitleBar={setting.useSystemTitleBar}
       />
 
       {toolchainBusy && (
-        <div style={{
+        <div className="banner-in" style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: "6px 14px", background: "rgba(110,168,254,0.14)",
           borderBottom: "1px solid rgba(110,168,254,0.35)",
@@ -87,7 +89,7 @@ export default function App() {
 
       {/* 🟢 首次启动引导横幅 */}
       {compilerMissing && !guideDismissed && (
-        <div style={{
+        <div className="banner-in" style={{
           display: "flex", alignItems: "center", gap: "10px",
           padding: "8px 14px", background: "rgba(240,183,47,0.12)",
           borderBottom: "1px solid rgba(240,183,47,0.3)",
@@ -170,7 +172,9 @@ export default function App() {
 
       {/* ⚙️ 设置面板（编译环境 / 编辑器） */}
       {setting.showSettings && (
-        <SettingsPanel settings={setting} />
+        <Suspense fallback={null}>
+          <SettingsPanel settings={setting} />
+        </Suspense>
       )}
     </div>
   );

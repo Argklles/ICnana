@@ -1,0 +1,10 @@
+{
+  "favorite": false,
+  "group": "示范",
+  "memoryLimit": 256,
+  "name": "示范-3-矩阵猜序列",
+  "oj": "other",
+  "problemType": "interactive",
+  "timeLimit": 3000,
+  "url": ""
+}

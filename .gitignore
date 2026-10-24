@@ -24,8 +24,14 @@ dist-ssr
 *.sw?
 
 # 编译工作区（临时文件，不提交）
-# 只忽略仓库根目录的那个 workspace，别把 src/components/workspace 也吞了
-/workspace/
+# 只忽略仓库根目录的那个 workspace，别把 src/components/workspace 也吞了；
+# 但三份示范题要能被跟踪，所以单独放行。
+/workspace/*
+!/workspace/示范-1-手动对答/
+!/workspace/示范-2-testlib/
+!/workspace/示范-3-矩阵猜序列/
+# 编译产物不进仓库
+/workspace/*/*.bin
 
 # OJ 浏览器 Cookie 缓存（运行时生成，不提交）
 src-tauri/.oj_cookies/
@@ -38,3 +44,6 @@ src-tauri/.oj_cookies_data/
 # 开发时的本地数据（工作区 / 工具链 / WebView 缓存）
 .devdata/
 .toolchain/
+
+# Monaco 本地运行时（由 scripts/prepare-monaco.mjs 生成）
+public/monaco/

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::compiler::hidden_cmd::create_hidden_command;
+use crate::compiler::hidden_cmd::create_hidden_command_path;
 
 /*
     交互题自测。
@@ -250,7 +250,7 @@ pub fn run_interactive(
         None
     };
 
-    let mut inter_cmd = create_hidden_command(interactor.to_str().unwrap_or_default());
+    let mut inter_cmd = create_hidden_command_path(interactor);
     inter_cmd.arg(input_file);
     if let Some(ch) = &channel {
         inter_cmd.arg(ch.path());
@@ -275,7 +275,7 @@ pub fn run_interactive(
         }
     };
 
-    let mut sol = match create_hidden_command(solution.to_str().unwrap_or_default())
+    let mut sol = match create_hidden_command_path(solution)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

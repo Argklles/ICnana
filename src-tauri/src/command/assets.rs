@@ -91,6 +91,26 @@ fn mime_of(path: &Path) -> &'static str {
     }
 }
 
+/// 把本地图片读成原始字节。
+/// 前端拿到 ArrayBuffer 后拼 Blob URL，比 base64 data URL 省内存
+/// （data URL 会把一张 4K 图变成 ~10MB 的字符串常驻）。
+#[tauri::command]
+pub fn read_image_bytes(path: String) -> Result<tauri::ipc::Response, String> {
+    let cleaned = normalize_path(&path);
+    let p = Path::new(&cleaned);
+
+    let meta = fs::metadata(p).map_err(|e| format!("读不到这个文件（{cleaned}）：{e}"))?;
+    if !meta.is_file() {
+        return Err("这是个目录，不是图片".to_string());
+    }
+    if meta.len() > 32 * 1024 * 1024 {
+        return Err("图片太大了（超过 32MB），换张小点的吧".to_string());
+    }
+
+    let bytes = fs::read(p).map_err(|e| format!("读取失败：{e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// 把本地图片读成 data URL（前端直接塞进 background-image）
 #[tauri::command]
 pub fn read_image_as_data_url(path: String) -> Result<String, String> {

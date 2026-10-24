@@ -15,8 +15,6 @@ interface AppearanceSettingsProps {
   value: Appearance;
   onChange: (v: Appearance) => void;
   error?: string;
-  useSystemTitleBar: boolean;
-  setUseSystemTitleBar: (v: boolean) => void;
   presets: ThemePreset[];
   onSavePreset: (name: string) => void;
   onDeletePreset: (id: string) => void;
@@ -29,8 +27,6 @@ export default function AppearanceSettings({
   value,
   onChange,
   error,
-  useSystemTitleBar,
-  setUseSystemTitleBar,
   presets,
   onSavePreset,
   onDeletePreset,
@@ -332,15 +328,6 @@ export default function AppearanceSettings({
       {/* ── 杂项 ── */}
       <div style={{ ...hintStyle, marginTop: 8 }}>圆角统一值作用于所有非直角的角。</div>
 
-      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 12, color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
-        <input
-          type="checkbox"
-          checked={useSystemTitleBar}
-          onChange={(e) => setUseSystemTitleBar(e.target.checked)}
-          style={{ accentColor: value.blue }}
-        />
-        使用系统标题栏（自绘标题栏拖不动、没反应时的退路）
-      </label>
     </div>
   );
 }

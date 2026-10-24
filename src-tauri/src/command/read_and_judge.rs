@@ -68,8 +68,37 @@ pub async fn judge_all(
         return cases;
     }
 
-    for case in &mut cases {
-        match run_binary(&bin, &case.input, time_limit, memory_limit) {
+    // 多个测试点并行跑（每批最多 4 个，避免 CPU 互相抢时间影响 TLE 判定）
+    const CONCURRENCY: usize = 4;
+    type RunResult = Result<(String, u64, Option<u64>), String>;
+
+    let mut results: Vec<RunResult> = Vec::with_capacity(cases.len());
+    let case_indices: Vec<usize> = (0..cases.len()).collect();
+
+    for chunk in case_indices.chunks(CONCURRENCY) {
+        let chunk_results: Vec<RunResult> = std::thread::scope(|scope| {
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|&i| {
+                    let input = cases[i].input.clone();
+                    let bin_ref = &bin;
+                    scope.spawn(move || run_binary(bin_ref, &input, time_limit, memory_limit))
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .map(|h| {
+                    h.join()
+                        .unwrap_or_else(|_| Err("评测线程崩溃".to_string()))
+                })
+                .collect()
+        });
+        results.extend(chunk_results);
+    }
+
+    for (case, result) in cases.iter_mut().zip(results) {
+        match result {
             Ok((actual_out, elapsed_ms, peak_kb)) => {
                 case.actual = actual_out.clone();
                 case.time_ms = Some(elapsed_ms);
@@ -89,6 +118,8 @@ pub async fn judge_all(
                     "tle".to_string()
                 } else if run_err.starts_with("MLE") {
                     "mle".to_string()
+                } else if run_err.starts_with("RE") {
+                    "re".to_string()
                 } else {
                     "error".to_string()
                 };

@@ -53,7 +53,6 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
     editingShortcut, setEditingShortcut,
     editingTemplate, setEditingTemplate,
     editingIndent, setEditingIndent,
-    useSystemTitleBar, setUseSystemTitleBar,
     codeTheme, codeShadow,
     tokenColors, terminalColors,
     presets,
@@ -100,8 +99,8 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
   const isMac = compiler?.platform === "macos";
 
   return (
-    <div style={overlayStyle} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={panelStyle}>
+    <div className="modal-overlay" style={overlayStyle} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-panel" style={panelStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, flexShrink: 0 }}>设置</h3>
 
@@ -247,8 +246,6 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
             value={editingAppearance}
             onChange={setEditingAppearance}
             error={appearanceError}
-            useSystemTitleBar={useSystemTitleBar}
-            setUseSystemTitleBar={setUseSystemTitleBar}
             presets={presets}
             onSavePreset={onSavePreset}
             onDeletePreset={onDeletePreset}

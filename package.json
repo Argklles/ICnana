@@ -4,8 +4,8 @@
   "version": "1.1.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node scripts/prepare-monaco.mjs && vite",
+    "build": "tsc && node scripts/prepare-monaco.mjs && vite build && node scripts/prune-fonts.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "build:linux": "tauri build -- --bundles deb,rpm",

@@ -251,7 +251,20 @@ export default function InteractorTab({
                     theme={editorTheme}
                     value={interactorCode}
                     onChange={v => setInteractorCode(v || "")}
-                    options={{ fontSize: 14, minimap: { enabled: false }, automaticLayout: true, tabSize: indentSize, insertSpaces: true, padding: { top: 10 } }}
+                    options={{
+                      fontSize: 14,
+                      minimap: { enabled: false },
+                      automaticLayout: true,
+                      tabSize: indentSize,
+                      insertSpaces: true,
+                      padding: { top: 10 },
+                      cursorBlinking: "smooth",
+                      cursorSmoothCaretAnimation: "on",
+                      cursorWidth: 2,
+                      smoothScrolling: true,
+                      mouseWheelScrollSensitivity: 1.2,
+                      scrollbar: { vertical: "visible" },
+                    }}
                   />
                 </div>}
 

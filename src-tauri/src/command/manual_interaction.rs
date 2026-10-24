@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::compiler::cpp_gcc::compile_code_with;
-use crate::compiler::hidden_cmd::create_hidden_command;
+use crate::compiler::hidden_cmd::create_hidden_command_path;
 use crate::compiler::options::{CompileOptions, CompileSettings};
 use crate::utils::ic_fs;
 
@@ -105,7 +105,7 @@ pub fn start_manual_interaction(
     compile_code_with(&src, &bin, &CompileOptions::from_settings(settings))
         .map_err(|e| format!("编译失败:\n{e}"))?;
 
-    let mut child = create_hidden_command(bin.to_str().unwrap_or_default())
+    let mut child = create_hidden_command_path(&bin)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

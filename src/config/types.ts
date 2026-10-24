@@ -4,7 +4,7 @@ export interface TestCase {
   input: string;
   output: string;
   actual: string;
-  status: "pending" | "running" | "ac" | "wa" | "error" | "tle" | "mle";
+  status: "pending" | "running" | "ac" | "wa" | "error" | "tle" | "mle" | "re";
   /** 本轮运行耗时（毫秒） */
   timeMs?: number;
   /** 本轮峰值内存（KB），目前只有 Windows 有 */

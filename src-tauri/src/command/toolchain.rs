@@ -38,10 +38,28 @@ fn emit(app: &AppHandle, stage: &str, message: impl Into<String>) {
     );
 }
 
+/// 在解压目录里找工具链的根。
+/// winlibs 的 7z 里通常套了一层 `winlibs-x86_64-.../`，所以要往下探一层。
+fn locate_root(dir: &Path) -> Option<PathBuf> {
+    let direct = dir.join("bin").join(compiler_exe_name());
+    if direct.exists() {
+        return Some(dir.to_path_buf());
+    }
+
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if child.is_dir() && child.join("bin").join(compiler_exe_name()).exists() {
+            return Some(child);
+        }
+    }
+    None
+}
+
 /// 解压后的 g++ 路径（不存在就返回 None）
 pub fn installed_compiler(dir: &Path) -> Option<PathBuf> {
-    let exe = dir.join("bin").join(compiler_exe_name());
-    exe.exists().then_some(exe)
+    let root = locate_root(dir)?;
+    Some(root.join("bin").join(compiler_exe_name()))
 }
 
 /// 资源目录里的 toolchain.7z
@@ -83,6 +101,10 @@ pub fn ensure_toolchain(app: &AppHandle, target: &Path) -> Result<Option<PathBuf
 
     match installed_compiler(target) {
         Some(exe) => {
+            // 记下真正的根，让 resolve_compiler 能找到它
+            if let Some(root) = exe.parent().and_then(|p| p.parent()) {
+                crate::compiler::hidden_cmd::init_toolchain_dir(root.to_path_buf());
+            }
             emit(app, "ready", "内置编译器已就绪");
             Ok(Some(exe))
         }
@@ -91,5 +113,38 @@ pub fn ensure_toolchain(app: &AppHandle, target: &Path) -> Result<Option<PathBuf
             emit(app, "error", msg.clone());
             Err(msg)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fake_toolchain(dir: &Path) {
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join(compiler_exe_name()), b"").unwrap();
+    }
+
+    #[test]
+    fn finds_root_when_flat() {
+        let dir = std::env::temp_dir().join("icnana-tc-flat");
+        let _ = std::fs::remove_dir_all(&dir);
+        fake_toolchain(&dir);
+
+        let root = locate_root(&dir).expect("应该能找到根");
+        assert_eq!(root, dir);
+    }
+
+    #[test]
+    fn finds_root_behind_winlibs_wrapper() {
+        // winlibs 的 7z 解压出来是 winlibs-xxx/bin/g++.exe
+        let dir = std::env::temp_dir().join("icnana-tc-wrapped");
+        let _ = std::fs::remove_dir_all(&dir);
+        fake_toolchain(&dir.join("winlibs-x86_64-posix-seh-gcc-15.2.0"));
+
+        let root = locate_root(&dir).expect("套了一层也要能找到");
+        assert!(root.ends_with("winlibs-x86_64-posix-seh-gcc-15.2.0"));
+        assert!(root.join("bin").join(compiler_exe_name()).exists());
     }
 }

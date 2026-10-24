@@ -78,6 +78,8 @@ body::before {
   background-size: cover;
   background-position: center;
   opacity: var(--bg-image-opacity, 1);
+  /* 这个 filter 不只是调亮度：它让壁纸变成独立合成层，滚动时不用整屏重绘。
+     去掉会让 WebKitGTK 每帧重画整张图，反而是卡顿来源。 */
   filter: brightness(0.88);
   pointer-events: none;
   z-index: 0;
@@ -521,4 +523,51 @@ input[type="range"].range::-moz-range-thumb {
   border: none;
   box-shadow: none;
   cursor: pointer;
+}
+
+/* ── 动效：弹窗淡入 + 轻微上浮，侧栏/按钮 hover 过渡 ── */
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-overlay {
+  animation: overlay-in 140ms ease-out;
+}
+
+.modal-panel {
+  animation: panel-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* 文件行 / 列表项：颜色和位置都只做很短的过渡 */
+.file-item {
+  transition: background 120ms ease, color 120ms ease, padding-left 120ms ease;
+}
+
+.file-item:hover {
+  padding-left: 4px;
+}
+
+/* 顶部横幅滑入 */
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.banner-in {
+  animation: banner-in 160ms ease-out;
+}
+
+/* 系统设置里关了动效就别动 */
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay, .modal-panel, .banner-in,
+  .file-item, input[type="range"].range {
+    animation: none !important;
+    transition: none !important;
+  }
 }

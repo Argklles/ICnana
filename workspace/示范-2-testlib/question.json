@@ -1,0 +1,10 @@
+{
+  "name": "示范-2-testlib",
+  "group": "示例",
+  "url": "",
+  "timeLimit": 2000,
+  "memoryLimit": 256,
+  "problemType": "interactive",
+  "favorite": false,
+  "oj": "other"
+}

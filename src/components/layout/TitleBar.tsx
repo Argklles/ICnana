@@ -17,8 +17,6 @@ interface TitleBarProps {
   onSelectTab: (key: string) => void;
   settingsOpen: boolean;
   onToggleSettings: () => void;
-  /** true = 用回系统标题栏，自己不画 */
-  useSystemTitleBar: boolean;
 }
 
 const RESIZE_HANDLES: { dir: string; style: React.CSSProperties }[] = [
@@ -37,13 +35,11 @@ export default function TitleBar({
   onSelectTab,
   settingsOpen,
   onToggleSettings,
-  useSystemTitleBar,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
 
   // 最大化状态要跟着窗口变化，否则图标永远显示成一个样子
   useEffect(() => {
-    if (useSystemTitleBar) return;
     const win = getCurrentWindow();
     let unlisten: (() => void) | undefined;
     let alive = true;
@@ -61,9 +57,7 @@ export default function TitleBar({
       alive = false;
       if (unlisten) unlisten();
     };
-  }, [useSystemTitleBar]);
-
-  if (useSystemTitleBar) return null;
+  }, []);
 
   const win = getCurrentWindow();
 

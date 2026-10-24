@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import Editor, { useMonaco } from "@monaco-editor/react";
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { invoke } from "@tauri-apps/api/core";
 import { CompileSettings } from "../../config/types";
 import { CodeTheme } from "../../config/constants";
 import { COMMON_COLORS, THEME_RULES } from "../../config/codeThemes";
-import InteractorTab from "./InteractorTab";
+import { lazy, Suspense } from "react";
+
+// 大依赖按需加载：不看题面 / 不用交互器时，这些 chunk 不会下载
+const ProblemTab = lazy(() => import("./ProblemTab"));
+const InteractorTab = lazy(() => import("./InteractorTab"));
 
 /**
  * Monaco 主题：透明背景 + 预设配色 + 用户自定义色。
@@ -66,6 +67,14 @@ export default function EditorArea({
   // 1️⃣ 纯内部 UI 状态：当前是看代码还是看题目
   type ViewMode = "code" | "problem" | "interactive";
   const [viewMode, setViewMode] = useState<ViewMode>("code");
+
+  // 懒加载的面板：第一次切过去才下载 chunk，之后保持挂载（display:none）
+  const [problemOpened, setProblemOpened] = useState(false);
+  const [interactiveOpened, setInteractiveOpened] = useState(false);
+  useEffect(() => {
+    if (viewMode === "problem") setProblemOpened(true);
+    if (viewMode === "interactive") setInteractiveOpened(true);
+  }, [viewMode]);
   const monaco = useMonaco();
   // 主编辑器的 model：切到交互器标签时不能让它去给错的 model 打波浪线
   const codeModelRef = useRef<any>(null);
@@ -123,25 +132,6 @@ export default function EditorArea({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFile]);
-
-  // 题面公式渲染（KaTeX auto-render，兜住 rehype-katex 没覆盖到的写法）
-  useEffect(() => {
-    if (viewMode === "problem" && problemMarkdown) {
-      // @ts-ignore
-      if (window.renderMathInElement) {
-        // @ts-ignore
-        window.renderMathInElement(document.querySelector(".problem-content-root"), {
-          delimiters: [
-            { left: '$$', right: '$$', display: true },
-            { left: '$', right: '$', display: false },
-            { left: '\\(', right: '\\)', display: false },
-            { left: '\\[', right: '\\]', display: true }
-          ],
-          throwOnError: false
-        });
-      }
-    }
-  }, [viewMode, problemMarkdown]);
 
   // 实时波浪线语法检查
   useEffect(() => {
@@ -336,40 +326,46 @@ export default function EditorArea({
                 value={code}
                 onChange={v => setCode(v || "")}
                 onMount={editor => { codeModelRef.current = editor.getModel(); }}
-                options={{ fontSize: 16, minimap: { enabled: false }, automaticLayout: true, tabSize: indentSize, insertSpaces: true, padding: { top: 10 } }}
+                options={{
+                  fontSize: 16,
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  tabSize: indentSize,
+                  insertSpaces: true,
+                  padding: { top: 10 },
+                  // 和 VS Code 一致的光标手感
+                  cursorBlinking: "smooth",
+                  cursorSmoothCaretAnimation: "on",
+                  cursorWidth: 2,
+                  // 滚轮滚动做补间动画（不是性能开关，关掉会变成一格一跳）
+                  smoothScrolling: true,
+                  mouseWheelScrollSensitivity: 1.2,
+                  scrollbar: { vertical: "visible" },
+                }}
               />
             </div>
             <div style={{ height: "100%", display: viewMode === "problem" ? "block" : "none" }}>
-              <div className="problem-content-root" style={{ height: '100%', overflowY: 'auto', padding: '24px 40px', lineHeight: 1.7, color: '#ddd', fontSize: '15px' }}>
-                {problemMarkdown ? (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{
-                      a: ({node, ...props}) => <a target="_blank" rel="noreferrer" style={{color: "#89DDFF"}} {...props} />,
-                      code: ({node, inline, className, children, ...props}: any) => (
-                        inline ? <code style={{ background: "rgba(255,255,255,0.1)", padding: "2px 4px", borderRadius: "3px" }} {...props}>{children}</code> : <code {...props}>{children}</code>
-                      )
-                    }}
-                  >
-                    {problemMarkdown}
-                  </ReactMarkdown>
-                ) : (
-                  <div style={{textAlign: 'center', marginTop: '100px', color: '#555'}}>暂无题面数据喵...</div>
-                )}
-              </div>
+              {problemOpened && (
+                <Suspense fallback={<div style={{ padding: 24, color: "var(--text-dim)" }}>加载题面…</div>}>
+                  <ProblemTab markdown={problemMarkdown} />
+                </Suspense>
+              )}
             </div>
             <div style={{ height: "100%", display: viewMode === "interactive" ? "flex" : "none", flexDirection: "column", minHeight: 0 }}>
-              <InteractorTab
-                activeFile={activeFile}
-                code={code}
-                indentSize={indentSize}
-                problemMeta={problemMeta}
-                testCases={testCases}
-                compileSettings={compileSettings}
-                terminalColors={terminalColors}
-                editorTheme={`icnana-${codeTheme}`}
-              />
+              {interactiveOpened && (
+                <Suspense fallback={<div style={{ padding: 24, color: "var(--text-dim)" }}>加载交互器…</div>}>
+                  <InteractorTab
+                    activeFile={activeFile}
+                    code={code}
+                    indentSize={indentSize}
+                    problemMeta={problemMeta}
+                    testCases={testCases}
+                    compileSettings={compileSettings}
+                    terminalColors={terminalColors}
+                    editorTheme={`icnana-${codeTheme}`}
+                  />
+                </Suspense>
+              )}
             </div>
         </div>
       </div>

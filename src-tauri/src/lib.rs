@@ -139,11 +139,16 @@ pub fn run() {
                     .route("/", post(command::companion::handle_companion))
                     .with_state(state);
 
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:10043")
-                    .await
-                    .unwrap();
+                // 10043 被占用（比如开了两个实例）时不能 panic，静默退出服务即可
+                let listener = match tokio::net::TcpListener::bind("127.0.0.1:10043").await {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("⚠️ 10043 端口被占用，无法接收 Competitive Companion：{e}");
+                        return;
+                    }
+                };
                 println!("📡 ICnana 实验室雷达启动！正在监听 10043 端口...");
-                axum::serve(listener, router).await.unwrap();
+                let _ = axum::serve(listener, router).await;
             });
 
             Ok(())
@@ -170,6 +175,7 @@ pub fn run() {
             command::workspace::set_problem_limits,
             command::workspace::get_workspace_path,
             command::assets::read_image_as_data_url,
+            command::assets::read_image_bytes,
 
             command::collections::list_collections,
             command::collections::create_collection,

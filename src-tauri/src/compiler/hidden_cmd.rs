@@ -1,9 +1,48 @@
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+
+
+/// 把路径换成本身的 8.3 短名（Windows 专有）。
+///
+/// MinGW 的 GCC 在内部把路径按本地代码页转换，路径里出现中文时
+/// 可能找不到自己的 cc1plus，也打不开源文件。传短路径可以绕开这个问题：
+///   D:\编程\icnana\main.cpp  →  D:\6E7A~1\icnana\main.cpp
+///
+/// 拿不到短名（卷上禁用了 8.3）时原样返回，行为不变。
+#[cfg(windows)]
+pub fn short_path(path: &std::path::Path) -> std::path::PathBuf {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetShortPathNameW(long_path: *const u16, short_path: *mut u16, len: u32) -> u32;
+    }
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut buf = vec![0u16; 32_768];
+    let len = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+
+    if len == 0 || len as usize >= buf.len() {
+        return path.to_path_buf();
+    }
+    std::path::PathBuf::from(OsString::from_wide(&buf[..len as usize]))
+}
+
+/// 非 Windows 上没有必要，原样返回
+#[cfg(not(windows))]
+pub fn short_path(path: &std::path::Path) -> std::path::PathBuf {
+    path.to_path_buf()
+}
 
 pub fn create_hidden_command(program: &str) -> Command {
     #[allow(unused_mut)]
@@ -14,6 +53,10 @@ pub fn create_hidden_command(program: &str) -> Command {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     cmd
+}
+/// 同上，但直接收路径，并且自动转成短路径（中文目录必需）
+pub fn create_hidden_command_path(program: &std::path::Path) -> Command {
+    create_hidden_command(&short_path(program).to_string_lossy())
 }
 //用于隐藏cmd
 
@@ -27,10 +70,13 @@ pub fn init_resource_dir(dir: PathBuf) {
 }
 
 /// 首启解压出来的工具链目录（应用数据目录下）。
-static TOOLCHAIN_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// 用 RwLock 而不是 OnceLock：解压完才知道真正的根（7z 里通常套了一层 winlibs-xxx）。
+static TOOLCHAIN_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 
 pub fn init_toolchain_dir(dir: PathBuf) {
-    let _ = TOOLCHAIN_DIR.set(dir);
+    if let Ok(mut guard) = TOOLCHAIN_DIR.write() {
+        *guard = Some(dir);
+    }
 }
 
 fn resource_candidates(relative: &[&str]) -> Vec<PathBuf> {
@@ -59,10 +105,21 @@ pub fn bundled_compiler() -> Option<PathBuf> {
     let name = compiler_exe_name();
 
     // 1) 首启解压到数据目录的那份（新版走这里）
-    let mut candidates: Vec<PathBuf> = TOOLCHAIN_DIR
-        .get()
-        .map(|dir| vec![dir.join("bin").join(name)])
-        .unwrap_or_default();
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(guard) = TOOLCHAIN_DIR.read() {
+        if let Some(dir) = guard.as_ref() {
+            candidates.push(dir.join("bin").join(name));
+            // 7z 里常见 winlibs-<triplet>/bin/g++.exe 这种一层包装，防御性再看一层
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let child = entry.path().join("bin").join(name);
+                    if child.exists() {
+                        candidates.push(child);
+                    }
+                }
+            }
+        }
+    }
 
     // 2) 打包后的资源目录（老版本直接把目录塞进安装包时走这里）
     candidates.extend(resource_candidates(&["resources", "toolchain", "bin", name]));
@@ -119,7 +176,7 @@ pub fn resolve_compiler() -> PathBuf {
 /// 带隐藏窗口的编译器命令
 pub fn create_compiler_command() -> Command {
     #[allow(unused_mut)]
-    let mut cmd = Command::new(resolve_compiler());
+    let mut cmd = Command::new(short_path(&resolve_compiler()));
     #[cfg(target_os = "windows")]
     {
         const CREATE_NO_WINDOW: u32 = 0x08000000;

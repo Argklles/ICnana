@@ -5,7 +5,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::compiler::hidden_cmd::{create_compiler_command, create_hidden_command, resolve_compiler};
+use crate::compiler::hidden_cmd::{
+    create_compiler_command, create_hidden_command_path, resolve_compiler, short_path,
+};
 use crate::compiler::options::CompileOptions;
 
 /*
@@ -36,13 +38,14 @@ pub fn compile_code_with_includes(
         cmd.arg(flag);
     }
     for dir in includes {
-        cmd.arg("-I").arg(dir);
+        // 中文目录：编译器读到的是短名，能正常打开
+        cmd.arg("-I").arg(short_path(dir));
     }
 
     let output = cmd
-        .arg(src)
+        .arg(short_path(src))
         .arg("-o")
-        .arg(bin)
+        .arg(short_path(bin))
         .output()
         .map_err(|e| {
             format!(
@@ -69,7 +72,7 @@ pub fn run_binary(
     time_limit_ms: u64,
     memory_limit_mb: u64,
 ) -> Result<(String, u64, Option<u64>), String> {
-    let mut child = create_hidden_command(bin.to_str().unwrap())
+    let mut child = create_hidden_command_path(bin)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -102,11 +105,14 @@ pub fn run_binary(
     let _ = memory_limit_mb; // 非 Windows 暂不强制内存
     let start_time = Instant::now();
 
+    let mut exit_status = None;
+
     loop {
         // try_wait() 是非阻塞的，瞬间看一眼进程死没死
         match child.try_wait() {
-            Ok(Some(_status)) => {
+            Ok(Some(status)) => {
                 // 进程乖乖自己结束了，跳出雷达扫描
+                exit_status = Some(status);
                 break;
             }
             Ok(None) => {
@@ -140,9 +146,32 @@ pub fn run_binary(
         }
     }
 
-    // 4. 程序正常结束（在规定时间内），去通道里把抽水机抽好的真实输出拿出来
+    // 4. 程序结束，先看退出状态：崩溃 / 非法返回不算「输出为空」
     let elapsed_ms = start_time.elapsed().as_millis() as u64;
     let actual_output = rx.recv().unwrap_or_default();
+
+    if let Some(status) = exit_status {
+        if !status.success() {
+            let detail = match status.code() {
+                Some(code) => format!("退出码 {code}"),
+                None => {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        match status.signal() {
+                            Some(sig) => format!("被信号 {sig} 终止（常见于越界访问、栈溢出、除零）"),
+                            None => "被异常终止".to_string(),
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        "被异常终止".to_string()
+                    }
+                }
+            };
+            return Err(format!("RE (Runtime Error): {detail}"));
+        }
+    }
 
     #[cfg(windows)]
     let peak_kb = win_mem::peak_working_set_bytes(pid).map(|b| b / 1024);

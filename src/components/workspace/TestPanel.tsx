@@ -81,6 +81,7 @@ export default function TestPanel({ testCases, setTestCases, width, onRunAll }: 
                   : tc.status === "wa" ? "#f87171"
                   : tc.status === "tle" ? "#f0b72f"
                   : tc.status === "mle" ? "#c98bdb"
+                  : tc.status === "re" ? "#f87171"
                   : "#888",
               }}>
                 {tc.status.toUpperCase()}
@@ -113,7 +114,7 @@ export default function TestPanel({ testCases, setTestCases, width, onRunAll }: 
 
           {/* 实际运行结果展示区 */}
           <pre style={{ margin: 0, padding: "8px", background: "var(--bg-input)", borderRadius: "4px", fontSize: "12px", color: tc.status === "ac" ? "#40b864" : tc.status === "wa" ? "#f44336" : "#aaa", whiteSpace: "pre-wrap" }}>
-            {tc.actual || "等待运行..."}
+            {tc.actual || (tc.status === "pending" ? "等待运行..." : "（无输出）")}
           </pre>
         </div>
       ))}

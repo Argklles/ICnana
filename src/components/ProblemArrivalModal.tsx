@@ -26,6 +26,7 @@ export default function ProblemArrivalModal({
 
   return (
     <div
+      className="modal-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -37,6 +38,7 @@ export default function ProblemArrivalModal({
       }}
     >
       <div
+        className="modal-panel"
         style={{
           background: "rgba(18, 18, 26, 0.96)",
           border: "1px solid rgba(255,255,255,0.14)",

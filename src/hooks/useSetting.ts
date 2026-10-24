@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CodeTheme, DEFAULT_APPEARANCE, DEFAULT_CODE_SHADOW, DEFAULT_CODE_THEME, DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, DEFAULT_TERMINAL_COLORS, TAB_SHORTCUTS, TerminalColors } from "../config/constants"
 import { Appearance, CompileSettings, ThemePreset } from "../config/types"
 import type { TabShortcut } from "../config/constants"
@@ -52,7 +51,6 @@ export function useSetting() {
     const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
     const [editingAppearance, setEditingAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
     const [appearanceError, setAppearanceError] = useState<string>("");
-    const [useSystemTitleBar, setUseSystemTitleBar] = useState<boolean>(false);
     const [codeTheme, setCodeTheme] = useState<CodeTheme>(DEFAULT_CODE_THEME);
     const [codeShadow, setCodeShadow] = useState<number>(DEFAULT_CODE_SHADOW);
     const [tokenColors, setTokenColors] = useState<Record<string, string>>({});
@@ -102,7 +100,6 @@ export function useSetting() {
             } catch { /* 坏数据就用默认 */ }
         }
 
-        setUseSystemTitleBar(localStorage.getItem("icnana_system_titlebar") === "1");
 
         const savedTheme = localStorage.getItem("icnana_code_theme") as CodeTheme | null;
         if (savedTheme === "contrast" || savedTheme === "soft" || savedTheme === "mono") setCodeTheme(savedTheme);
@@ -231,15 +228,24 @@ export function useSetting() {
         localStorage.setItem("icnana_code_tokens", JSON.stringify(next));
     };
 
-    // 系统标题栏开关：切换后即时生效，不需要重启
-    useEffect(() => {
-        localStorage.setItem("icnana_system_titlebar", useSystemTitleBar ? "1" : "0");
-        getCurrentWindow().setDecorations(useSystemTitleBar).catch((e) => {
-            console.warn("切换标题栏失败:", e);
-        });
-    }, [useSystemTitleBar]);
+    /** 由文件扩展名猜 MIME（供 Blob 使用，与后端 mime_of 保持一致） */
+function mimeFromPath(p: string): string {
+    const ext = p.split(".").pop()?.toLowerCase() ?? "";
+    switch (ext) {
+        case "png": return "image/png";
+        case "jpg": case "jpeg": return "image/jpeg";
+        case "webp": return "image/webp";
+        case "gif": return "image/gif";
+        case "bmp": return "image/bmp";
+        case "svg": return "image/svg+xml";
+        default: return "application/octet-stream";
+    }
+}
 
-    // 背景图单独处理：http 直接用，本地文件交给 Rust 读成 data URL
+// 上一次的 objectURL，换图时要 revoke，避免内存泄漏
+let currentBgObjectUrl: string | null = null;
+
+// 背景图单独处理：http 直接用，本地文件交给 Rust 读成字节，拼 Blob URL
     useEffect(() => {
         let alive = true;
         const raw = appearance.bgImage.trim();
@@ -263,8 +269,15 @@ export function useSetting() {
         } else if (/^https?:\/\//i.test(raw)) {
             apply(raw);
         } else {
-            invoke<string>("read_image_as_data_url", { path: raw })
-                .then((url) => { apply(url); setAppearanceError(""); })
+            invoke<ArrayBuffer>("read_image_bytes", { path: raw })
+                .then((buf) => {
+                    const blob = new Blob([buf], { type: mimeFromPath(raw) });
+                    const url = URL.createObjectURL(blob);
+                    if (currentBgObjectUrl) URL.revokeObjectURL(currentBgObjectUrl);
+                    currentBgObjectUrl = url;
+                    apply(url);
+                    setAppearanceError("");
+                })
                 .catch((e) => {
                     console.warn("背景图加载失败:", e);
                     apply("");
@@ -325,7 +338,6 @@ export function useSetting() {
         appearance, setAppearance,
         editingAppearance, setEditingAppearance,
         appearanceError,
-        useSystemTitleBar, setUseSystemTitleBar,
         codeTheme, updateCodeTheme,
         codeShadow, updateCodeShadow,
         tokenColors, updateTokenColor,

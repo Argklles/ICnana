@@ -105,6 +105,7 @@ pub fn run_binary(
     let _ = memory_limit_mb; // 非 Windows 暂不强制内存
     let start_time = Instant::now();
 
+    #[allow(unused_assignments)]
     let mut exit_status = None;
 
     loop {

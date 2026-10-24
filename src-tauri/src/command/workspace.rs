@@ -362,6 +362,48 @@ pub fn rename_workspace_file(old_name: String, new_name: String) -> Result<Strin
     Ok(new_stem.to_string())
 }
 //重命名文件
+/// 读取某道题的样例。文件不存在时给一个空样例占位。
+#[tauri::command]
+pub fn load_test_cases(filename: String) -> Result<Vec<crate::oj::models::TestCase>, String> {
+    let stem = std::path::Path::new(&filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+    let cases_path = ic_fs::workspace_test_cases(&stem);
+    if !cases_path.exists() {
+        return Ok(vec![crate::oj::models::TestCase {
+            input: String::new(),
+            output: String::new(),
+            actual: String::new(),
+            status: "pending".to_string(),
+            time_ms: None,
+            memory_kb: None,
+        }]);
+    }
+
+    let content = fs::read_to_string(cases_path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+/// 保存样例。注意用 models::TestCase，保证耗时/内存字段不会在保存时丢掉。
+#[tauri::command]
+pub fn save_test_cases(
+    filename: String,
+    cases: Vec<crate::oj::models::TestCase>,
+) -> Result<(), String> {
+    let stem = std::path::Path::new(&filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+    let cases_path = ic_fs::workspace_test_cases(&stem);
+    let json = serde_json::to_string_pretty(&cases).map_err(|e| e.to_string())?;
+    fs::write(cases_path, json).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +448,39 @@ mod tests {
         assert_eq!(third.oj, "codeforces");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod cases_tests {
+    use super::*;
+    use crate::oj::models::TestCase;
+
+    #[test]
+    fn saved_cases_keep_time_and_memory() {
+        // 回归：以前 history_testcase 有自己的 TestCase 结构，保存时会把
+        // timeMs / memoryKb 丢掉，重新打开题目就看不到耗时了。
+        let stem = "icnana-cases-roundtrip";
+        let dir = ic_fs::workspace_dir().join(stem);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let cases = vec![TestCase {
+            input: "1 2".into(),
+            output: "3".into(),
+            actual: "3".into(),
+            status: "ac".into(),
+            time_ms: Some(17),
+            memory_kb: Some(2048),
+        }];
+
+        save_test_cases(stem.to_string(), cases).unwrap();
+        let loaded = load_test_cases(stem.to_string()).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].time_ms, Some(17), "耗时字段保存后被丢了");
+        assert_eq!(loaded[0].memory_kb, Some(2048), "内存字段保存后被丢了");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

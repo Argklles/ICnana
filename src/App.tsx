@@ -8,10 +8,10 @@ import { TabType } from "./config/types";
 // 2️⃣ 引入你的“数据大脑” Hooks
 import { useWorkspace } from "./hooks/useWorkspace";
 import { useSetting } from "./hooks/useSetting"; // 记得确保文件名拼写改对了
-import { useProblem } from "./hooks/usePloblem"; // 沿用你的文件名
+import { useProblem } from "./hooks/useProblem"; 
 
 // 3️⃣ 引入你的“手脚” UI 组件
-import FileSidebar from "./components/workspace/FileSildbar";
+import FileSidebar from "./components/workspace/FileSidebar";
 import TitleBar from "./components/layout/TitleBar";
 import { useTauriEvent } from "./hooks/useTauriEvent";
 import { usePanelResize } from "./hooks/usePanelResize";

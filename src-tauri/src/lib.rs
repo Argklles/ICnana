@@ -41,7 +41,6 @@ pub fn run() {
     }
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // ── 资源目录：打包后资源不在 exe 旁边，交给 Tauri 解析 ──
             if let Ok(resource_dir) = app.path().resource_dir() {
@@ -174,7 +173,6 @@ pub fn run() {
             command::workspace::set_problem_type,
             command::workspace::set_problem_limits,
             command::workspace::get_workspace_path,
-            command::assets::read_image_as_data_url,
             command::assets::read_image_bytes,
 
             command::collections::list_collections,
@@ -182,14 +180,11 @@ pub fn run() {
             command::collections::delete_collection,
             command::collections::toggle_in_collection,
 
-            command::system::open_browser,
-
-            command::history_testcase::load_test_cases,
-            command::history_testcase::save_test_cases,
+            command::workspace::load_test_cases,
+            command::workspace::save_test_cases,
 
             oj::get_cc::get_problem_meta,
 
-            utils::ic_fs::load_question_html,
             utils::ic_fs::load_question_markdown,
         ])
         .run(tauri::generate_context!())

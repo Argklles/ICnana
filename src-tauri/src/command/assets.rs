@@ -8,24 +8,6 @@ use std::path::Path;
     直接由 Rust 读文件转成 data URL 交给前端，最省事也最可靠。
 */
 
-fn base64_encode(data: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
-
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-
-        out.push(TABLE[((n >> 18) & 63) as usize] as char);
-        out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
-    }
-    out
-}
-
 fn hex_val(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),
@@ -74,22 +56,6 @@ pub fn normalize_path(raw: &str) -> String {
     p
 }
 
-fn mime_of(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        Some("gif") => "image/gif",
-        Some("bmp") => "image/bmp",
-        Some("svg") => "image/svg+xml",
-        _ => "application/octet-stream",
-    }
-}
 
 /// 把本地图片读成原始字节。
 /// 前端拿到 ArrayBuffer 后拼 Blob URL，比 base64 data URL 省内存
@@ -111,52 +77,9 @@ pub fn read_image_bytes(path: String) -> Result<tauri::ipc::Response, String> {
     Ok(tauri::ipc::Response::new(bytes))
 }
 
-/// 把本地图片读成 data URL（前端直接塞进 background-image）
-#[tauri::command]
-pub fn read_image_as_data_url(path: String) -> Result<String, String> {
-    let cleaned = normalize_path(&path);
-    let p = Path::new(&cleaned);
-
-    let meta = fs::metadata(p).map_err(|e| format!("读不到这个文件（{cleaned}）：{e}"))?;
-    if !meta.is_file() {
-        return Err("这是个目录，不是图片".to_string());
-    }
-    if meta.len() > 32 * 1024 * 1024 {
-        return Err("图片太大了（超过 32MB），换张小点的吧".to_string());
-    }
-
-    let bytes = fs::read(p).map_err(|e| format!("读取失败：{e}"))?;
-    Ok(format!("data:{};base64,{}", mime_of(p), base64_encode(&bytes)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_matches_known_vectors() {
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==");
-        assert_eq!(base64_encode(b"fo"), "Zm8=");
-        assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
-    }
-
-    #[test]
-    fn reads_local_file_as_data_url() {
-        let dir = std::env::temp_dir().join("icnana-assets-test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("x.png");
-        std::fs::write(&path, b"\x89PNG\r\n\x1a\n").unwrap();
-
-        let plain = read_image_as_data_url(path.to_string_lossy().to_string()).unwrap();
-        assert!(plain.starts_with("data:image/png;base64,"), "前缀不对: {}", &plain[..32.min(plain.len())]);
-
-        // file:// 形式也要能读，且结果一致
-        let as_url = format!("file://{}", path.to_string_lossy());
-        let via_url = read_image_as_data_url(as_url).unwrap();
-        assert_eq!(plain, via_url);
-    }
 
     #[test]
     fn normalize_file_url_and_encoding() {
@@ -168,10 +91,4 @@ mod tests {
         assert_eq!(normalize_path("C:/x/y.png"), "C:/x/y.png");
     }
 
-    #[test]
-    fn mime_by_extension() {
-        assert_eq!(mime_of(Path::new("/a/b.PNG")), "image/png");
-        assert_eq!(mime_of(Path::new("x.jpeg")), "image/jpeg");
-        assert_eq!(mime_of(Path::new("x.webp")), "image/webp");
-    }
 }

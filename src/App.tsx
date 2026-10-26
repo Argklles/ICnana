@@ -155,7 +155,7 @@ export default function App() {
           {/* 右侧：测试用例面板组件 */}
           <TestPanel 
             testCases={workspace.testCases} setTestCases={workspace.setTestCases} width={testPanelWidth}
-            onRunAll={() => workspace.runAll(setting.compileSettings)}
+            onRunAll={() => workspace.runAll(setting.compileSettings, setting.concurrency)}
           />
         </div>
 

@@ -6,8 +6,8 @@ import AppearanceSettings from "./AppearanceSettings";
 import { CODE_THEME_CHOICES } from "../../config/constants";
 import { TOKEN_KEYS, presetColor } from "../../config/codeThemes";
 import type { useSetting } from "../../hooks/useSetting";
-import { fieldStyle, hintStyle, labelStyle, rowStyle, selectStyle } from "./ui";
-import { OPT_CHOICES, STD_CHOICES, TAB_SHORTCUTS } from "../../config/constants";
+import { Select, fieldStyle, hintStyle, labelStyle, rowStyle } from "./ui";
+import { CONCURRENCY_CHOICES, OPT_CHOICES, STD_CHOICES, TAB_SHORTCUTS } from "../../config/constants";
 import type { TabShortcut } from "../../config/constants";
 
 type SettingsBundle = ReturnType<typeof useSetting>;
@@ -55,6 +55,7 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
     editingIndent, setEditingIndent,
     codeTheme, codeShadow,
     tokenColors, terminalColors,
+    concurrency, updateConcurrency,
     presets,
   } = settings;
 
@@ -190,23 +191,34 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
           <div style={rowStyle}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>C++ 标准</label>
-              <select
-                style={selectStyle}
+              <Select
                 value={editingCompile.std}
-                onChange={(e) => patchCompile({ std: e.target.value })}
-              >
-                {STD_CHOICES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+                options={STD_CHOICES.map((s) => ({ value: s, label: s }))}
+                onChange={(v) => patchCompile({ std: v })}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>优化等级</label>
-              <select
-                style={selectStyle}
+              <Select
                 value={editingCompile.opt}
-                onChange={(e) => patchCompile({ opt: e.target.value })}
-              >
-                {OPT_CHOICES.map((o) => <option key={o} value={o}>-{o}</option>)}
-              </select>
+                options={OPT_CHOICES.map((o) => ({ value: o, label: `-${o}` }))}
+                onChange={(v) => patchCompile({ opt: v })}
+              />
+            </div>
+          </div>
+
+          <div style={{ ...rowStyle, alignItems: "flex-end" }}>
+            <div style={{ width: 200 }}>
+              <label style={labelStyle}>并行用例数</label>
+              <Select
+                value={concurrency}
+                options={CONCURRENCY_CHOICES.map((n) => ({ value: n, label: `${n} 个` }))}
+                onChange={(v) => updateConcurrency(Number(v))}
+              />
+            </div>
+            <div style={{ ...hintStyle, flex: 1, marginTop: 0, paddingBottom: 8 }}>
+              同时跑几个测试点。数字越大评测越快，但多进程抢 CPU 会让计时偏慢，
+              临界用例可能被误判 TLE；上限还会被自动夹到 CPU 核数（最多 8）。
             </div>
           </div>
 
@@ -341,26 +353,19 @@ export default function SettingsPanel({ settings }: SettingsPanelProps) {
           <div style={{ ...rowStyle, alignItems: "flex-end" }}>
             <div style={{ width: 140 }}>
               <label style={labelStyle}>缩进</label>
-              <select
-                style={selectStyle}
+              <Select
                 value={editingIndent}
-                onChange={(e) => setEditingIndent(parseInt(e.target.value) as 2 | 4)}
-              >
-                <option value={2}>2 空格</option>
-                <option value={4}>4 空格</option>
-              </select>
+                options={[{ value: 2, label: "2 空格" }, { value: 4, label: "4 空格" }]}
+                onChange={(v) => setEditingIndent(v as 2 | 4)}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>切换 代码 / 题面 / 交互器</label>
-              <select
-                style={selectStyle}
+              <Select
                 value={editingShortcut}
-                onChange={(e) => setEditingShortcut(e.target.value as TabShortcut)}
-              >
-                {TAB_SHORTCUTS.map(item => (
-                  <option key={item.key} value={item.key}>{item.label}</option>
-                ))}
-              </select>
+                options={TAB_SHORTCUTS.map((item) => ({ value: item.key as TabShortcut, label: item.label }))}
+                onChange={(v) => setEditingShortcut(v as TabShortcut)}
+              />
             </div>
           </div>
 

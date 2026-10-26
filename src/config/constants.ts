@@ -92,6 +92,10 @@ export const DEFAULT_TAB_SHORTCUT: TabShortcut = "alt-arrow";
 export const FAVORITES_ID = "favorites";
 
 export const STD_CHOICES = ["c++14", "c++17", "c++20", "c++23"];
+
+/** 并行用例数（后端还会夹到 [1, min(核数, 8)]） */
+export const CONCURRENCY_CHOICES = [1, 2, 4, 6, 8];
+export const DEFAULT_CONCURRENCY = 4;
 export const OPT_CHOICES = ["O0", "O1", "O2", "O3"];
 
 // 默认收藏夹

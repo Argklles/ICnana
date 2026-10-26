@@ -4,10 +4,65 @@ use crate::compiler::hidden_cmd::{create_compiler_command, resolve_compiler};
 use crate::compiler::options::{CompileOptions, CompileSettings};
 use crate::oj::models::TestCase;
 use crate::utils::ic_fs;
-use crate::compiler::cpp_gcc::{compile_code_with, compile_code_with_includes, run_binary};
+use crate::compiler::cpp_gcc::{compile_code_with, compile_code_with_includes, run_binary, RunOutput};
 use std::path::PathBuf;
 use crate::compiler::interactive::run_interactive;
 use std::time::Duration;
+
+/// 并行跑用例数的硬上限：再多只会互相抢 CPU，把 TLE 判歪
+pub const MAX_CONCURRENCY: usize = 8;
+/// 没传或传 0 时的默认值
+pub const DEFAULT_CONCURRENCY: usize = 4;
+
+/// 把用户选的并发数夹到安全范围：
+///  - 至少 1
+///  - 不超过物理并行度（核数）
+///  - 不超过 MAX_CONCURRENCY
+pub fn resolve_concurrency(requested: Option<u32>) -> usize {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(DEFAULT_CONCURRENCY)
+        .max(1);
+
+    let want = requested
+        .map(|v| v as usize)
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_CONCURRENCY);
+
+    want.min(MAX_CONCURRENCY).min(cores).max(1)
+}
+
+/// 传给界面的输出最多这么多（采集上限是 1MB，但 1MB 文本塞进 <pre> 也会卡）
+const DISPLAY_CAP: usize = 200 * 1024;
+
+/// 按字符边界把长文本截到 DISPLAY_CAP 以内，并附一句说明
+fn clip_for_display(text: &str) -> String {
+    if text.len() <= DISPLAY_CAP {
+        return text.to_string();
+    }
+    let mut end = DISPLAY_CAP;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n\n…（另有 {} 未显示）",
+        &text[..end],
+        human_bytes((text.len() - end) as u64)
+    )
+}
+
+/// 把字节数转成「1.2 MB」这种形式，用于输出超限提示
+fn human_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b >= KB * KB {
+        format!("{:.1} MB", b / (KB * KB))
+    } else if b >= KB {
+        format!("{:.1} KB", b / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
 
 /// 题目元数据没写限制时的兜底值
 pub const DEFAULT_TIME_LIMIT: u64 = 2000;
@@ -40,6 +95,7 @@ pub async fn judge_all(
     code: String,
     mut cases: Vec<TestCase>,
     settings: Option<CompileSettings>,
+    concurrency: Option<u32>,
 ) -> Vec<TestCase> {
     if let Err(e) = ic_fs::ensure_workspace() {
         for case in &mut cases {
@@ -68,14 +124,15 @@ pub async fn judge_all(
         return cases;
     }
 
-    // 多个测试点并行跑（每批最多 4 个，避免 CPU 互相抢时间影响 TLE 判定）
-    const CONCURRENCY: usize = 4;
-    type RunResult = Result<(String, u64, Option<u64>), String>;
+    // 多个测试点并行跑；并发数由设置决定，并夹到安全上限内
+    let concurrency = resolve_concurrency(concurrency);
+    println!("⚡ 并行用例数: {concurrency}");
+    type RunResult = Result<(RunOutput, u64, Option<u64>), String>;
 
     let mut results: Vec<RunResult> = Vec::with_capacity(cases.len());
     let case_indices: Vec<usize> = (0..cases.len()).collect();
 
-    for chunk in case_indices.chunks(CONCURRENCY) {
+    for chunk in case_indices.chunks(concurrency) {
         let chunk_results: Vec<RunResult> = std::thread::scope(|scope| {
             let handles: Vec<_> = chunk
                 .iter()
@@ -99,12 +156,21 @@ pub async fn judge_all(
 
     for (case, result) in cases.iter_mut().zip(results) {
         match result {
-            Ok((actual_out, elapsed_ms, peak_kb)) => {
-                case.actual = actual_out.clone();
+            Ok((output, elapsed_ms, peak_kb)) => {
                 case.time_ms = Some(elapsed_ms);
                 case.memory_kb = peak_kb;
-                // 验证实际输出和期望输出是否一致
-                if actual_out == case.output.trim() {
+                case.actual = clip_for_display(&output.text);
+
+                if output.truncated {
+                    // 输出超过 1MB 直接判 WA：真实 OJ 也有输出上限，
+                    // 本地继续比对没有意义，而且会把整包数据传到界面上
+                    case.status = "wa".to_string();
+                    case.actual = format!(
+                        "{}\n\n…（输出超过 1 MB，共 {}，已截断；大输出请用样例生成/对拍）",
+                        case.actual,
+                        human_bytes(output.total_bytes)
+                    );
+                } else if output.text == case.output.trim() {
                     case.status = "ac".to_string();
                 } else {
                     case.status = "wa".to_string();
@@ -302,5 +368,60 @@ mod tests {
             limits_from_question(&json!({ "timeLimit": 1500 })),
             (1500, DEFAULT_MEMORY_LIMIT)
         );
+    }
+}
+
+#[cfg(test)]
+mod display_cap_tests {
+    use super::*;
+
+    #[test]
+    fn short_text_untouched() {
+        assert_eq!(clip_for_display("hello"), "hello");
+    }
+
+    #[test]
+    fn long_text_is_clipped_on_char_boundary() {
+        // 中文每个字符 3 字节，截断点必须落在字符边界上，否则会 panic
+        let text = "题".repeat(120_000); // 360KB
+        let clipped = clip_for_display(&text);
+        assert!(clipped.len() < text.len(), "应该被截短");
+        assert!(clipped.contains("未显示"), "应提示省略了多少");
+        // 能安全切片说明没有踩到半个字符
+        assert!(clipped.chars().count() > 0);
+    }
+
+    #[test]
+    fn human_bytes_formats_units() {
+        assert!(human_bytes(512).ends_with("B"));
+        assert!(human_bytes(2048).ends_with("KB"));
+        assert!(human_bytes(3 * 1024 * 1024).ends_with("MB"));
+    }
+}
+
+#[cfg(test)]
+mod concurrency_tests {
+    use super::*;
+
+    #[test]
+    fn clamps_to_safe_range() {
+        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+
+        // 0 / None → 默认值（但仍受核数与上限约束）
+        assert!(resolve_concurrency(Some(0)) >= 1);
+        assert!(resolve_concurrency(None) >= 1);
+
+        // 传超大 → 不超过 8，也不超过核数
+        let big = resolve_concurrency(Some(999));
+        assert!(big <= MAX_CONCURRENCY, "超过硬上限: {big}");
+        assert!(big <= cores.max(1), "超过核数: {big}");
+
+        // 传 1 → 就是 1（串行）
+        assert_eq!(resolve_concurrency(Some(1)), 1);
+
+        // 永远 >= 1
+        for v in [0u32, 1, 3, 8, 64] {
+            assert!(resolve_concurrency(Some(v)) >= 1);
+        }
     }
 }

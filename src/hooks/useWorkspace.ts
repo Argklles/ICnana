@@ -152,7 +152,7 @@ export function useWorkspace() {
     };
 
     // ── 运行全部样例（由右侧「测试用例」面板的按钮触发）─────────
-    const runAll = async (settings: CompileSettings) => {
+    const runAll = async (settings: CompileSettings, concurrency: number) => {
         if (!activeFileRef.current) return;
 
         const loading = testCasesRef.current.map(c => ({
@@ -168,6 +168,7 @@ export function useWorkspace() {
                 code: codeRef.current,
                 cases: loading,
                 settings,
+                concurrency,
             });
             setTestCases(res);
             await invoke("save_test_cases", { filename: activeFileRef.current, cases: res });

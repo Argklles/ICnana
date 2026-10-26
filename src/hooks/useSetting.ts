@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CodeTheme, DEFAULT_APPEARANCE, DEFAULT_CODE_SHADOW, DEFAULT_CODE_THEME, DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, DEFAULT_TERMINAL_COLORS, TAB_SHORTCUTS, TerminalColors } from "../config/constants"
+import { CodeTheme, DEFAULT_APPEARANCE, DEFAULT_CONCURRENCY, DEFAULT_CODE_SHADOW, DEFAULT_CODE_THEME, DEFAULT_COMPILE_SETTINGS, DEFAULT_TAB_SHORTCUT, DEFAULT_TEMPLATE, DEFAULT_TERMINAL_COLORS, TAB_SHORTCUTS, TerminalColors } from "../config/constants"
 import { Appearance, CompileSettings, ThemePreset } from "../config/types"
 import type { TabShortcut } from "../config/constants"
 
@@ -54,6 +54,7 @@ export function useSetting() {
     const [codeTheme, setCodeTheme] = useState<CodeTheme>(DEFAULT_CODE_THEME);
     const [codeShadow, setCodeShadow] = useState<number>(DEFAULT_CODE_SHADOW);
     const [tokenColors, setTokenColors] = useState<Record<string, string>>({});
+    const [concurrency, setConcurrency] = useState<number>(DEFAULT_CONCURRENCY);
     const [presets, setPresets] = useState<ThemePreset[]>([]);
     const [terminalColors, setTerminalColors] = useState<TerminalColors>(DEFAULT_TERMINAL_COLORS);
     const [editingShortcut, setEditingShortcut] = useState<TabShortcut>(DEFAULT_TAB_SHORTCUT);
@@ -100,6 +101,9 @@ export function useSetting() {
             } catch { /* 坏数据就用默认 */ }
         }
 
+
+        const savedConcurrency = Number(localStorage.getItem("icnana_concurrency"));
+        if (Number.isFinite(savedConcurrency) && savedConcurrency > 0) setConcurrency(savedConcurrency);
 
         const savedTheme = localStorage.getItem("icnana_code_theme") as CodeTheme | null;
         if (savedTheme === "contrast" || savedTheme === "soft" || savedTheme === "mono") setCodeTheme(savedTheme);
@@ -217,6 +221,12 @@ export function useSetting() {
         const next = { ...terminalColors, [key]: color };
         setTerminalColors(next);
         localStorage.setItem("icnana_terminal_colors", JSON.stringify(next));
+    };
+
+    /** 并行用例数：改了立即生效并落盘 */
+    const updateConcurrency = (v: number) => {
+        setConcurrency(v);
+        localStorage.setItem("icnana_concurrency", String(v));
     };
 
     /** 改某一类元素的颜色；传空字符串表示恢复预设 */
@@ -341,6 +351,7 @@ let currentBgObjectUrl: string | null = null;
         codeTheme, updateCodeTheme,
         codeShadow, updateCodeShadow,
         tokenColors, updateTokenColor,
+        concurrency, updateConcurrency,
         presets, savePreset, deletePreset, applyPreset,
         terminalColors, updateTerminalColor,
         editingTemplate, setEditingTemplate,

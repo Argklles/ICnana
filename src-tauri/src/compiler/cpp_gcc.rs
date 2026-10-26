@@ -61,6 +61,32 @@ pub fn compile_code_with_includes(
     Ok(())
 }
 
+/// 测试用的编译锁。
+///
+/// 好几个用例都要真编译 C++，并行跑时会同时启动一堆 g++/cc1plus；
+/// 在受限环境（容器 / 低配机器）里偶发 `Permission denied (os error 13)`。
+/// 用一把锁把它们串起来，代价是测试慢一两秒，换来稳定。
+#[cfg(test)]
+pub(crate) fn test_compile_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 单次运行最多保留这么多字节的 stdout。
+/// 超出的部分仍然继续读走（丢弃），否则子进程会阻塞在 write 上被误判 TLE。
+const MAX_CAPTURE: usize = 1024 * 1024;
+
+/// 一次运行的输出结果
+#[derive(Debug)]
+pub struct RunOutput {
+    /// 实际保留的文本（最多 MAX_CAPTURE 字节）
+    pub text: String,
+    /// 程序总共打印了多少字节
+    pub total_bytes: u64,
+    /// 是否被截断
+    pub truncated: bool,
+}
+
 /// 跑一次样例。
 ///
 /// - `time_limit_ms`：超时阈值，来自题目元数据
@@ -71,7 +97,7 @@ pub fn run_binary(
     input: &str,
     time_limit_ms: u64,
     memory_limit_mb: u64,
-) -> Result<(String, u64, Option<u64>), String> {
+) -> Result<(RunOutput, u64, Option<u64>), String> {
     let mut child = create_hidden_command_path(bin)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -85,24 +111,38 @@ pub fn run_binary(
         // 这里的 stdin 离开作用域会被自动 drop，相当于向子进程发送 EOF，这步极其关键
     }
 
-    // 2. 挂载“抽水机”线程：实时抽干 stdout，防止 64KB 管道阻塞导致假死
+    // 2. 挂载“抽水机”线程：实时抽干 stdout，防止 64KB 管道阻塞导致假死。
+    //    只保留前 MAX_CAPTURE 字节，其余继续读走丢弃 —— 关键是「继续读」，
+    //    停下来子进程会卡在 write() 上，最后被误判成 TLE。
     let mut stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let mut buffer = String::new();
-        // 这里会一直读，直到子进程结束关闭 stdout
-        let _ = stdout.read_to_string(&mut buffer);
-        let _ = tx.send(buffer);
+        let mut kept: Vec<u8> = Vec::new();
+        let mut total: u64 = 0;
+        let mut buf = [0u8; 64 * 1024];
+
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    total += n as u64;
+                    if kept.len() < MAX_CAPTURE {
+                        let remain = MAX_CAPTURE - kept.len();
+                        kept.extend_from_slice(&buf[..n.min(remain)]);
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        // 用 lossy 转换：截断点可能落在多字节字符中间
+        let _ = tx.send((String::from_utf8_lossy(&kept).to_string(), total));
     });
 
     // 3. 核心：死循环检测雷达
     let timeout_duration = Duration::from_millis(time_limit_ms.clamp(100, 600_000));
     #[cfg(windows)]
     let mem_limit_bytes = memory_limit_mb.saturating_mul(1024 * 1024);
-    #[cfg(windows)]
-    let pid = child.id();
-    #[cfg(not(windows))]
-    let _ = memory_limit_mb; // 非 Windows 暂不强制内存
     let start_time = Instant::now();
 
     #[allow(unused_assignments)]
@@ -119,15 +159,14 @@ pub fn run_binary(
             Ok(None) => {
                 // Windows 没有 setrlimit，这里轮询工作集内存；超了直接杀
                 #[cfg(windows)]
-                if mem_limit_bytes > 0 {
-                    if let Some(used) = win_mem::working_set_bytes(pid) {
-                        if used > mem_limit_bytes {
-                            let _ = child.kill();
-                            return Err(format!(
-                                "MLE (Memory Limit Exceeded): 超出 {} MB 限制",
-                                memory_limit_mb
-                            ));
-                        }
+                if let Some(c) = win_mem::counters(&child) {
+                    let used = c.working_set_size as u64;
+                    if mem_limit_bytes > 0 && used > mem_limit_bytes {
+                        let _ = child.kill();
+                        return Err(format!(
+                            "MLE (Memory Limit Exceeded): 超出 {} MB 限制",
+                            memory_limit_mb
+                        ));
                     }
                 }
 
@@ -149,7 +188,30 @@ pub fn run_binary(
 
     // 4. 程序结束，先看退出状态：崩溃 / 非法返回不算「输出为空」
     let elapsed_ms = start_time.elapsed().as_millis() as u64;
-    let actual_output = rx.recv().unwrap_or_default();
+    let (text, total_bytes) = rx.recv().unwrap_or_default();
+    let output = RunOutput {
+        truncated: total_bytes > MAX_CAPTURE as u64,
+        text,
+        total_bytes,
+    };
+
+    // 峰值内存：用子进程句柄查，进程退出后依然能读到（用 pid 就查不到了）
+    #[cfg(windows)]
+    let peak_kb = win_mem::counters(&child).map(|c| c.peak_working_set_size as u64 / 1024);
+
+    #[cfg(not(windows))]
+    let peak_kb: Option<u64> = None;
+
+    // 事后 MLE：可能在我们采样前就被系统杀掉，靠 peak 兜底
+    if let Some(kb) = peak_kb {
+        if memory_limit_mb > 0 && kb > memory_limit_mb.saturating_mul(1024) {
+            return Err(format!(
+                "MLE (Memory Limit Exceeded): 峰值 {} MB，超出 {} MB 限制",
+                kb / 1024,
+                memory_limit_mb
+            ));
+        }
+    }
 
     if let Some(status) = exit_status {
         if !status.success() {
@@ -174,13 +236,11 @@ pub fn run_binary(
         }
     }
 
-    #[cfg(windows)]
-    let peak_kb = win_mem::peak_working_set_bytes(pid).map(|b| b / 1024);
-
-    #[cfg(not(windows))]
-    let peak_kb: Option<u64> = None;
-
-    Ok((actual_output.trim().to_string(), elapsed_ms, peak_kb))
+    Ok((
+        RunOutput { text: output.text.trim().to_string(), ..output },
+        elapsed_ms,
+        peak_kb,
+    ))
 }
 
 /// Windows 专用：查询进程的工作集大小。
@@ -191,25 +251,20 @@ pub fn run_binary(
 #[cfg(windows)]
 mod win_mem {
     use core::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
 
     #[repr(C)]
-    struct ProcessMemoryCounters {
+    pub struct ProcessMemoryCounters {
         cb: u32,
         page_fault_count: u32,
-        peak_working_set_size: usize,
-        working_set_size: usize,
+        pub peak_working_set_size: usize,
+        pub working_set_size: usize,
         quota_peak_paged_pool_usage: usize,
         quota_paged_pool_usage: usize,
         quota_peak_non_paged_pool_usage: usize,
         quota_non_paged_pool_usage: usize,
         pagefile_usage: usize,
         peak_pagefile_usage: usize,
-    }
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
-        fn CloseHandle(handle: *mut c_void) -> i32;
     }
 
     #[link(name = "psapi")]
@@ -221,46 +276,31 @@ mod win_mem {
         ) -> i32;
     }
 
-    // PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
-    const ACCESS: u32 = 0x0400 | 0x0010;
-
-    pub fn peak_working_set_bytes(pid: u32) -> Option<u64> {
-        counters(pid).map(|c| c.peak_working_set_size as u64)
-    }
-
-    pub fn working_set_bytes(pid: u32) -> Option<u64> {
-        counters(pid).map(|c| c.working_set_size as u64)
-    }
-
-    fn counters(pid: u32) -> Option<ProcessMemoryCounters> {
+    /// 直接用子进程句柄查内存。
+    ///
+    /// 之前是拿 pid 调 OpenProcess —— 但进程一退出 OpenProcess 就失败，
+    /// 于是「峰值内存」永远是 None（界面上显示 -1 MB）。
+    /// 句柄在 Child 被 drop 之前一直有效，进程结束后也能读到 peak。
+    pub fn counters(child: &std::process::Child) -> Option<ProcessMemoryCounters> {
         unsafe {
-            let handle = OpenProcess(ACCESS, 0, pid);
-            if handle.is_null() {
-                return None;
-            }
-
+            let handle = child.as_raw_handle() as *mut c_void;
             let mut counters: ProcessMemoryCounters = core::mem::zeroed();
             counters.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
 
             let ok = GetProcessMemoryInfo(handle, &mut counters, counters.cb);
-            CloseHandle(handle);
-
-            if ok == 0 {
-                None
-            } else {
-                Some(counters)
-            }
+            (ok != 0).then_some(counters)
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::compiler::options::CompileOptions;
 
     fn build(name: &str, code: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join("icnana-run-binary-test");
+        let _compile_guard = crate::compiler::cpp_gcc::test_compile_lock();
+        // 每个用例一个独立目录：并行跑时不会互相干扰（否则偶发 EACCES）
+        let dir = std::env::temp_dir().join(format!("icnana-build-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join(format!("{name}.cpp"));
         let bin = dir.join(name);
@@ -276,7 +316,8 @@ mod tests {
             "#include <iostream>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b;return 0;}",
         );
         let (out, elapsed_ms, _) = run_binary(&bin, "1 2", 2000, 256).unwrap();
-        assert_eq!(out, "3");
+        assert_eq!(out.text, "3");
+        assert!(!out.truncated);
         assert!(elapsed_ms < 2000, "正常程序不该超过限制，实测 {elapsed_ms} ms");
     }
 
@@ -289,7 +330,7 @@ mod tests {
         );
         let (out, elapsed_ms, _) = run_binary(&bin, "2 0 0", 3000, 256)
             .expect("这个程序不该超时");
-        assert_eq!(out, "");
+        assert_eq!(out.text, "");
         assert!(elapsed_ms < 1000, "空循环应该几毫秒跑完，实测 {elapsed_ms} ms");
     }
 
@@ -298,5 +339,64 @@ mod tests {
         let (_, bin) = build("spin", "int main(){volatile long long x=0;while(true)x++;}");
         let err = run_binary(&bin, "", 300, 256).unwrap_err();
         assert!(err.starts_with("TLE"), "应该是 TLE，实际: {err}");
+    }
+}
+
+#[cfg(test)]
+mod output_cap_tests {
+    use super::*;
+    use crate::compiler::options::CompileOptions;
+
+    /// 大输出必须被截断，而且要「读完不阻塞」——不能因此变成 TLE。
+    #[test]
+    fn huge_output_is_truncated_not_blocked() {
+        let _compile_guard = crate::compiler::cpp_gcc::test_compile_lock();
+        let dir = std::env::temp_dir().join("icnana-build-hugeout");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("print.cpp");
+        let bin = dir.join("print");
+
+        // 打印 3MB 左右
+        std::fs::write(
+            &src,
+            "#include <cstdio>\nint main(){for(int i=0;i<300000;i++)printf(\"0123456789\\n\");return 0;}",
+        )
+        .unwrap();
+        compile_code_with(&src, &bin, &CompileOptions::from_settings(None)).expect("编译失败");
+
+        let (out, elapsed_ms, _) = run_binary(&bin, "", 10000, 256).expect("不该失败");
+
+        assert!(out.truncated, "3MB 输出应该被判截断");
+        assert!(out.total_bytes > 3_000_000, "应记录真实字节数，实际 {}", out.total_bytes);
+        assert!(out.text.len() <= 1024 * 1024, "保留的文本不该超过 1MB");
+        assert!(elapsed_ms < 5000, "继续排空不该把它拖成超时，实测 {elapsed_ms} ms");
+    }
+}
+
+#[cfg(all(test, windows))]
+mod mle_tests {
+    use super::*;
+    use crate::compiler::options::CompileOptions;
+
+    /// 峰值内存超限时必须判 MLE（而不是崩了判 RE / 输出为空判 WA）。
+    /// 只在 Windows 跑：Linux 按约定不测内存，peak 恒为 None。
+    #[test]
+    fn over_limit_memory_is_mle_not_re() {
+        let dir = std::env::temp_dir().join("icnana-build-mle");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("eat.cpp");
+        let bin = dir.join("eat");
+
+        // 申请并写入 256MB，限制给 8MB
+        std::fs::write(
+            &src,
+            "#include <cstdlib>\n#include <cstring>\nint main(){size_t n=256ull*1024*1024;char*p=(char*)malloc(n);memset(p,1,n);return 0;}",
+        )
+        .unwrap();
+        compile_code_with(&src, &bin, &CompileOptions::from_settings(None)).expect("编译失败");
+
+        let err = run_binary(&bin, "", 5000, 8).unwrap_err();
+        assert!(err.starts_with("MLE"), "应该是 MLE，实际: {err}");
     }
 }

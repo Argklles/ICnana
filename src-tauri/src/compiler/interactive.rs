@@ -454,6 +454,7 @@ mod tests {
 
     #[test]
     fn interactive_ac_and_wa() {
+        let _compile_guard = crate::compiler::cpp_gcc::test_compile_lock();
         if !have_gpp() {
             eprintln!("跳过：没有 g++");
             return;
@@ -527,6 +528,7 @@ int main() {
 
     #[test]
     fn tle_when_solution_never_answers() {
+        let _compile_guard = crate::compiler::cpp_gcc::test_compile_lock();
         if !have_gpp() {
             eprintln!("跳过：没有 g++");
             return;
@@ -557,6 +559,7 @@ int main() {
     /// testlib 交互器：argv[2] 被换成命名管道后，必须能和选手正常对话
     #[test]
     fn testlib_interactor_works() {
+        let _compile_guard = crate::compiler::cpp_gcc::test_compile_lock();
         if !have_gpp() {
             eprintln!("跳过：没有 g++");
             return;

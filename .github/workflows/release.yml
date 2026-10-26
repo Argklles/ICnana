@@ -127,13 +127,55 @@ jobs:
     permissions:
       contents: write # 【点赞】这是非常正确的一步，允许 Action 往仓库写 Release
     steps:
+      # 需要提交历史来生成「本版改动」，默认浅克隆拿不到 tag
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: 下载所有产物
         uses: actions/download-artifact@v4
+
+      - name: 生成 Release 说明
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+
+          {
+            echo "## 下载哪个"
+            echo
+            echo "| 平台 | 文件 |"
+            echo "| --- | --- |"
+            echo "| **Windows（推荐）** | \`icnana_${VER}_x64-setup.exe\` — 安装时可自选目录，内置 GCC |"
+            echo "| Windows（MSI） | \`icnana_${VER}_x64_en-US.msi\` — 企业分发用 |"
+            echo "| **Linux** | \`.deb\` / \`.rpm\` — 依赖系统 \`g++\`，装包时会自动拉 |"
+            echo
+            echo "> Windows 首次启动会把内置 GCC 解压到程序目录（约 500MB，20–40 秒），之后不再重复。"
+            echo "> 装到可写目录时，题目和样例就存在程序旁边的 \`workspace/\`，整个文件夹可以拷走。"
+            echo
+            echo "## 本版改动"
+            echo
+            if [ -n "$PREV" ]; then
+              git log --no-merges --pretty='- %s' "${PREV}..${TAG}" \
+                | grep -v '^- chore: 版本号' || true
+              echo
+              echo "**完整对比**：https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
+            else
+              echo "首个版本。"
+            fi
+          } > RELEASE_NOTES.md
+
+          echo "----- 生成的说明 -----"
+          cat RELEASE_NOTES.md
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: ICnana ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: false
           files: |
             linux-packages/**/*.deb
             linux-packages/**/*.rpm

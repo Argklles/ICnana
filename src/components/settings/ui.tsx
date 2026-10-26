@@ -1,4 +1,4 @@
-import { CSSProperties } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 
 /**
  * 设置面板里公用的样式和小控件。
@@ -42,13 +42,6 @@ export const groupTitleStyle: CSSProperties = {
   paddingBottom: 6,
   margin: "18px 0 10px",
   borderBottom: "1px solid rgba(255,255,255,0.10)",
-};
-
-/** 原生 select：继承 fieldStyle，另外让下拉列表走深色（WebKit 下才好看） */
-export const selectStyle: CSSProperties = {
-  ...fieldStyle,
-  colorScheme: "dark",
-  cursor: "pointer",
 };
 
 /** 一行里并排放几个控件 */
@@ -208,6 +201,144 @@ export function ColorSwatches({
           cursor: "pointer",
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * 自绘下拉框。
+ *
+ * 不用原生 <select>：Windows 的 WebView2 里弹出列表用的是系统配色，
+ * 深色主题下会出现「白底白字」，点开什么都看不见。
+ *
+ * 列表用 position: fixed 按按钮的位置定位，而不是 absolute：
+ * 设置面板本身是 overflow: auto 的滚动容器，absolute 的列表在靠近底部时
+ * 会被裁掉、还会把面板撑出滚动条。
+ */
+export function Select<T extends string | number>({
+  value,
+  options,
+  onChange,
+  width,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+  width?: number | string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const openList = () => {
+    const el = btnRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      // 往下放不下就往上翻
+      const spaceBelow = window.innerHeight - r.bottom;
+      const listHeight = Math.min(220, options.length * 34 + 8);
+      const top = spaceBelow < listHeight ? Math.max(8, r.top - listHeight - 4) : r.bottom + 4;
+      setRect({ top, left: r.left, width: r.width });
+    }
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    const close = () => setOpen(false);
+    const onDocDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    // 面板滚动 / 窗口缩放后坐标就失效了，直接关掉最省事
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", width: width ?? "100%" }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openList())}
+        style={{
+          ...fieldStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {current?.label ?? String(value)}
+        </span>
+        <span style={{ fontSize: 10, opacity: 0.6, flexShrink: 0 }}>▼</span>
+      </button>
+
+      {open && rect && (
+        <div
+          style={{
+            position: "fixed",
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            zIndex: 9999,
+            background: "rgba(22, 22, 30, 0.98)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: 6,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.5)",
+            padding: 4,
+            maxHeight: 220,
+            overflowY: "auto",
+          }}
+        >
+          {options.map((o) => (
+            <button
+              key={String(o.value)}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "6px 8px",
+                borderRadius: 4,
+                border: "none",
+                background: "transparent",
+                color: o.value === value ? "#fff" : "rgba(255,255,255,0.82)",
+                fontWeight: o.value === value ? 700 : 400,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
